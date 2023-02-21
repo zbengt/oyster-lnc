@@ -1,6 +1,17 @@
 # Ignore Mac system files
-.DS_store
+.DS_Store
 .Rproj.user
+
+#CEABiGR gitignore file types
+.Rhistory
+.RData
+.Ruserdata
+*.bedgraph
+*.vcf
+*.bam
+*checkpoint.ipynb
+*.ctab
+*.md5
 
 
 # big stuff
