@@ -1,0 +1,390 @@
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S12M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S12M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 30,108,061 reads, 3,680,414 reads pseudoaligned
+[quant] estimated average fragment length: 101.468
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 963 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S13M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S13M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 22,371,935 reads, 2,824,234 reads pseudoaligned
+[quant] estimated average fragment length: 95.1184
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 988 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S16F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S16F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 23,656,670 reads, 1,090,396 reads pseudoaligned
+[quant] estimated average fragment length: 121.092
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,104 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S19F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S19F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 23,837,247 reads, 1,036,461 reads pseudoaligned
+[quant] estimated average fragment length: 109.547
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,114 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S22F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S22F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 27,978,813 reads, 1,270,361 reads pseudoaligned
+[quant] estimated average fragment length: 107.313
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,145 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S23M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S23M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 34,776,112 reads, 3,790,737 reads pseudoaligned
+[quant] estimated average fragment length: 86.9286
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 851 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S29F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S29F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 22,122,242 reads, 1,379,397 reads pseudoaligned
+[quant] estimated average fragment length: 107.98
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,187 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S31M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S31M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 19,811,268 reads, 2,625,177 reads pseudoaligned
+[quant] estimated average fragment length: 115.738
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 929 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S35F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S35F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 19,868,657 reads, 924,987 reads pseudoaligned
+[quant] estimated average fragment length: 104.209
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,085 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S36F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S36F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 21,276,094 reads, 1,146,588 reads pseudoaligned
+[quant] estimated average fragment length: 103.825
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 853 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S39F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S39F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 24,052,010 reads, 1,034,062 reads pseudoaligned
+[quant] estimated average fragment length: 108.652
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,107 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S3F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S3F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 21,622,598 reads, 954,305 reads pseudoaligned
+[quant] estimated average fragment length: 108.629
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,082 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S41F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S41F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 22,128,716 reads, 1,307,067 reads pseudoaligned
+[quant] estimated average fragment length: 105.483
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,140 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S44F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S44F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 24,493,586 reads, 1,332,041 reads pseudoaligned
+[quant] estimated average fragment length: 110.51
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,129 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S48M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S48M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 52,086,454 reads, 5,997,425 reads pseudoaligned
+[quant] estimated average fragment length: 93.9067
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,067 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S50F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S50F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 19,912,778 reads, 881,312 reads pseudoaligned
+[quant] estimated average fragment length: 110.889
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,135 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S52F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S52F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 23,241,491 reads, 1,452,384 reads pseudoaligned
+[quant] estimated average fragment length: 116.004
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,185 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S53F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S53F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 22,661,909 reads, 1,068,912 reads pseudoaligned
+[quant] estimated average fragment length: 104.572
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,158 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S54F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S54F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 22,715,760 reads, 1,283,406 reads pseudoaligned
+[quant] estimated average fragment length: 102.676
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,179 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S59M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S59M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 21,243,397 reads, 1,733,582 reads pseudoaligned
+[quant] estimated average fragment length: 100.853
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 863 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S64M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S64M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 23,302,647 reads, 3,256,905 reads pseudoaligned
+[quant] estimated average fragment length: 89.7172
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,009 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S6M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S6M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 34,301,843 reads, 3,728,107 reads pseudoaligned
+[quant] estimated average fragment length: 97.4696
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 983 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S76F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S76F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 25,550,076 reads, 1,181,341 reads pseudoaligned
+[quant] estimated average fragment length: 104.114
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 963 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S77F_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S77F_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 27,376,995 reads, 1,099,339 reads pseudoaligned
+[quant] estimated average fragment length: 106.471
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,103 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S7M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S7M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 25,556,368 reads, 3,049,533 reads pseudoaligned
+[quant] estimated average fragment length: 103.974
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,285 rounds
+
+
+[quant] fragment length distribution will be estimated from the data
+[index] k-mer length: 31
+[index] number of targets: 4,750
+[index] number of k-mers: 11,624,803
+[index] number of equivalence classes: 49,741
+[quant] running in paired-end mode
+[quant] will process pair 1: /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S9M_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+                             /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S9M_R2.fastp-trim.20bp-5prime.20220224.fq.gz
+[quant] finding pseudoalignments for the reads ... done
+[quant] processed 31,008,604 reads, 3,557,237 reads pseudoaligned
+[quant] estimated average fragment length: 99.9498
+[   em] quantifying the abundances ... done
+[   em] the Expectation-Maximization algorithm ran for 1,130 rounds
+

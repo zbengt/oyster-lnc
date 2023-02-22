@@ -1,0 +1,13 @@
+{
+	"n_targets": 4750,
+	"n_bootstraps": 0,
+	"n_processed": 21243397,
+	"n_pseudoaligned": 1733582,
+	"n_unique": 1030613,
+	"p_pseudoaligned": 8.2,
+	"p_unique": 4.9,
+	"kallisto_version": "0.46.1",
+	"index_version": 10,
+	"start_time": "Tue Feb 21 17:07:44 2023",
+	"call": "/home/shared/kallisto/kallisto quant -i /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/index/GCF_002022765.2_C_virginica-3.0_lncRNA.index -o /home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/01-lncRNA-kallisto/S59M -t 40 /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S59M_R1.fastp-trim.20bp-5prime.20220224.fq.gz /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/S59M_R2.fastp-trim.20bp-5prime.20220224.fq.gz"
+}
