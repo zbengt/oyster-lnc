@@ -44,13 +44,13 @@ index -i /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/index
 
 
 ```{bash}
-find ../data/*_R1.fastp* \
+find /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/*_R1.fastp* \
 | xargs basename -s _R1.fastp-trim.20bp-5prime.20220224.fq.gz | xargs -I{} /home/shared/kallisto/kallisto \
-quant -i ../data/GCF_002022765.2_C_virginica-3.0_lncRNA.index \
--o ../output/13-lncRNA-kallisto/{} \
+quant -i /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/index/GCF_002022765.2_C_virginica-3.0_lncRNA.index \
+-o /home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/01-lncRNA-kallisto/{} \
 -t 40 \
-../data/{}_R1.fastp-trim.20bp-5prime.20220224.fq.gz ../data/{}_R2.fastp-trim.20bp-5prime.20220224.fq.gz \
-2>&1 | tee ../output/13-lncRNA-kallisto/{}.out
+/home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/{}_R1.fastp-trim.20bp-5prime.20220224.fq.gz /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/{}_R2.fastp-trim.20bp-5prime.20220224.fq.gz \
+2>&1 | tee ../output/01-lncRNA-kallisto/{}.out
 ```
 
 
