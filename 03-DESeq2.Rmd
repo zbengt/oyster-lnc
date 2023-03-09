@@ -1,0 +1,67 @@
+---
+title: "03-DESeq2"
+author: "Zach Bengtsson"
+date: "3/8/2023"
+output: html_document
+---
+
+```{r}
+setwd("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/01-lncRNA-kallisto")
+count_matrix <- read.csv("merged_counts.csv", row.names = 1)
+```
+
+```{r}
+### data frame of conditions/treatments
+metaData <- data.frame(
+  sample = c("S12M", "S13M", "S16F", "S19F", "S22F", "S23M", "S29F", "S31M", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S48M", "S50F", "S52F", "S53F", "S54F", "S59M", "S64M", "S6M", "S76F", "S77F", "S7M", "S9M"),
+  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed"),
+  sex = c("M", "M", "F", "F", "F", "M", "F", "M", "F", "F", "F", "F", "F", "F", "M", "F", "F", "F", "F", "M", "M", "M", "F", "F", "M", "M")
+)
+print(metaData)
+```
+
+```{r}
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = round(count_matrix),
+                                colData = metaData,
+                                design = ~ sex + treatment)
+```
+```{r}
+dds <- DESeq(dds)
+```
+```{r}
+res <- results(dds)
+```
+
+```{r}
+library("ggplot2")
+fc <- res$log2FoldChange
+pval <- res$padj
+plot_data <- data.frame(log2FoldChange = fc, neg_log10_pval = -log10(pval))
+ggplot(plot_data, aes(x = log2FoldChange, y = neg_log10_pval)) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("gray", "red")) +
+  labs(x = "Log2 Fold Change", y = "-log10(p-value)") +
+  theme_bw()
+
+
+```
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

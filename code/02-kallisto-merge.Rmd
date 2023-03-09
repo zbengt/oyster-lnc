@@ -40,3 +40,9 @@ print(count_matrix)
 setwd("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/01-lncRNA-kallisto")
 write.table(count_matrix, "merged_counts.txt", sep = "\t", quote = FALSE)
 ```
+
+```{r}
+setwd("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/01-lncRNA-kallisto")
+write.csv(count_matrix, file = "merged_counts.csv", row.names = TRUE)
+```
+
