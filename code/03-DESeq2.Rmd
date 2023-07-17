@@ -48,9 +48,14 @@ ggplot(plot_data, aes(x = log2FoldChange, y = neg_log10_pval)) +
 ```
 
 ## lncRNA DESeq2 Separated by Sex
+
+Make two separate male and female count matrices by filtering with the "M" and "F" in the sample column names...
 ```{r}
 # Read the text file containing the data
-data <- read.table("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/02-kallisto-merge/merged_counts.txt", header = TRUE, sep = "\t")
+data <- read.table("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/02-kallisto-merge/geneID_merged_counts.csv", header = TRUE, sep = ",")
+
+# Extract row labels
+row_labels <- as.character(data[[1]])
 
 # Select specific columns by column name for females
 femaleOysters_lncRNA <- data[, grep("F", names(data))]
@@ -58,9 +63,154 @@ femaleOysters_lncRNA <- data[, grep("F", names(data))]
 # Select specific columns by column name for males
 maleOysters_lncRNA <- data[, grep("M", names(data))]
 
+# Row names
+rownames(femaleOysters_lncRNA) <- row_labels
+rownames(maleOysters_lncRNA) <- row_labels
+
 # Write the filtered data to a new text file for females
-write.table(femaleOysters_lncRNA, "femaleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(femaleOysters_lncRNA, "~/github/oyster-lnc/output/femaleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = TRUE)
 
 # Write the filtered data to a new text file for males
-write.table(maleOysters_lncRNA, "maleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+write.table(maleOysters_lncRNA, "~/github/oyster-lnc/output/maleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = TRUE)
 ```
+
+```{r}
+ncol(data)
+nrow(data)
+```
+
+```{r}
+head(femaleOysters_lncRNA)
+```
+
+
+## Female oyster DESeq2 run
+
+Intall DESeq2...
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("DESeq2")
+```
+
+Load all of the packages you'll need...
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+library(data.table)
+```
+
+Create data frame for DESeq to reference. This specifies which sample IDs are control and which are treatment (OA)…
+```{r}
+metaFemaleData <- data.frame(
+  sample = c("S16F", "S19F", "S22F", "S29F", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S50F", "S52F", "S53F", "S54F", "S76F", "S77F"),
+  treatment = c("Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Control", "Control", "Control", "Control", "Exposed")
+  )
+```
+
+Load female lncRNA count matrix...
+```{r}
+femaleCountmatrix <- read.delim("~/github/oyster-lnc/output/femaleOysters_lncRNA_countMatrix.txt", header = TRUE, sep = '\t')
+
+
+head(femaleCountmatrix)
+```
+
+Round counts to integers so they can be run through DESeq2 and summarize countmatrix structure to check and see that it worked…
+```{r}
+femaleCountmatrix <- round(femaleCountmatrix, 0)
+str(femaleCountmatrix)
+```
+
+Make sure number of count matrix columns matches number of meta dataframe rows...
+```{r}
+# Check the dimensions of countData matrix
+ncol(femaleCountmatrix)
+
+# Check the dimensions of colData matrix
+nrow(metaFemaleData)
+
+```
+
+
+Use the DESeq2 package to create a DESeqDataSet object from a count matrix and metadata…
+```{r}
+f.deseq2.dds <- DESeqDataSetFromMatrix(countData = femaleCountmatrix,
+                                     colData = metaFemaleData, 
+                                     design = ~ treatment)
+```
+
+Performs differential expression analysis using DESeq2 on the f.deseq2.dds object, extract the results, converts them into a data frame, and then orders the rows of the data frame alphabetically based on the row names…
+```{r}
+f.deseq2.dds <- DESeq(f.deseq2.dds)
+f.deseq2.res <- results(f.deseq2.dds)
+f.deseq2.res <- as.data.frame(f.deseq2.res)  # Convert to data frame
+f.deseq2.res <- f.deseq2.res[order(rownames(f.deseq2.res)), ]
+```
+
+Check...
+```{r}
+str(f.deseq2.res)
+```
+
+Count the number of hits with adjusted p-value less then 0.05…
+```{r}
+dim(f.deseq2.res[!is.na(f.deseq2.res$padj) & f.deseq2.res$padj <= 0.05, ])
+```
+
+```{r}
+# Subset the hits with adjusted p-value less than 0.05
+hits <- f.deseq2.res[!is.na(f.deseq2.res$padj) & f.deseq2.res$padj <= 0.05, ]
+
+# View the transcript IDs of the hits
+transcript_ids <- rownames(hits)
+print(transcript_ids)
+```
+
+Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
+```{r}
+tmp <- f.deseq2.res
+# The main plot
+plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
+     main="Females - OA Treatment vs. Control  (pval <= 0.05)",
+     xlab="mean of normalized counts",
+     ylab="Log2 Fold Change")
+# Getting the significant points and plotting them again so they're a different color
+tmp.sig <- f.deseq2.res[!is.na(f.deseq2.res$padj) & f.deseq2.res$padj <= 0.05, ]
+points(tmp.sig$baseMean, tmp.sig$log2FoldChange, pch=20, cex=0.45, col="red")
+# 2 FC lines
+abline(h=c(-1,1), col="blue")
+```
+
+Generate a PCA plot to see how all of the differential expression results cluster…
+```{r}
+f.vsd <- vst(f.deseq2.dds, blind = FALSE)
+plotPCA(f.vsd, intgroup = "treatment")
+```
+
+```{r}
+print(f.deseq2.dds)
+```
+
+
+Create heatmaps to view the top 50 differentially expressed lncRNAs…
+```{r}
+# Select top 50 differentially expressed genes
+res <- results(f.deseq2.dds)
+res_ordered <- res[order(res$padj), ]
+top_genes <- row.names(res_ordered)[1:50]
+
+# Extract counts and normalize
+counts <- counts(f.deseq2.dds, normalized = TRUE)
+counts_top <- counts[top_genes, ]
+
+# Log-transform counts
+log_counts_top <- log2(counts_top + 1)
+
+# Generate heatmap
+pheatmap(log_counts_top, scale = "row")
+```
+
