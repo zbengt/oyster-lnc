@@ -46,3 +46,6 @@ ggplot(plot_data, aes(x = log2FoldChange, y = neg_log10_pval)) +
 
 
 ```
+
+## lncRNA DESeq2 Separated by Sex
+
