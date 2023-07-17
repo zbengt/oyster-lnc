@@ -48,4 +48,19 @@ ggplot(plot_data, aes(x = log2FoldChange, y = neg_log10_pval)) +
 ```
 
 ## lncRNA DESeq2 Separated by Sex
+```{r}
+# Read the text file containing the data
+data <- read.table("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/02-kallisto-merge/merged_counts.txt", header = TRUE, sep = "\t")
 
+# Select specific columns by column name for females
+femaleOysters_lncRNA <- data[, grep("F", names(data))]
+
+# Select specific columns by column name for males
+maleOysters_lncRNA <- data[, grep("M", names(data))]
+
+# Write the filtered data to a new text file for females
+write.table(femaleOysters_lncRNA, "femaleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+
+# Write the filtered data to a new text file for males
+write.table(maleOysters_lncRNA, "maleOysters_lncRNA_countMatrix.txt", sep = "\t", quote = FALSE, row.names = FALSE)
+```
