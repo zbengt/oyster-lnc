@@ -201,7 +201,7 @@ Create heatmaps to view the top 50 differentially expressed lncRNAs…
 # Select top 50 differentially expressed genes
 res <- results(f.deseq2.dds)
 res_ordered <- res[order(res$padj), ]
-top_genes <- row.names(res_ordered)[1:50]
+top_genes <- row.names(res_ordered)[1:30]
 
 # Extract counts and normalize
 counts <- counts(f.deseq2.dds, normalized = TRUE)
@@ -270,7 +270,7 @@ Performs differential expression analysis using DESeq2 on the m.deseq2.dds objec
 m.deseq2.dds <- DESeq(m.deseq2.dds)
 m.deseq2.res <- results(m.deseq2.dds)
 m.deseq2.res <- as.data.frame(m.deseq2.res)  # Convert to data frame
-m.deseq2.res <- f.deseq2.res[order(rownames(m.deseq2.res)), ]
+m.deseq2.res <- m.deseq2.res[order(rownames(m.deseq2.res)), ]
 ```
 
 Check...
@@ -288,7 +288,7 @@ dim(m.deseq2.res[!is.na(m.deseq2.res$padj) & m.deseq2.res$padj <= 0.05, ])
 m.hits <- m.deseq2.res[!is.na(m.deseq2.res$padj) & m.deseq2.res$padj <= 0.05, ]
 
 # View the transcript IDs of the hits
-m.transcript_ids <- rownames(hits)
+m.transcript_ids <- rownames(m.hits)
 print(m.transcript_ids)
 ```
 
@@ -297,7 +297,7 @@ Create a plot of differentially expressed lncRNAs with those that have a p-value
 tmp <- m.deseq2.res
 # The main plot
 plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
-     main="Females - OA Treatment vs. Control  (pval <= 0.05)",
+     main="Males - OA Treatment vs. Control  (pval <= 0.05)",
      xlab="mean of normalized counts",
      ylab="Log2 Fold Change")
 # Getting the significant points and plotting them again so they're a different color
@@ -322,7 +322,7 @@ Create heatmaps to view the top 50 differentially expressed lncRNAs…
 # Select top 50 differentially expressed genes
 res <- results(m.deseq2.dds)
 res_ordered <- res[order(res$padj), ]
-top_genes <- row.names(res_ordered)[1:50]
+top_genes <- row.names(res_ordered)[1:30]
 
 # Extract counts and normalize
 counts <- counts(m.deseq2.dds, normalized = TRUE)
