@@ -335,6 +335,135 @@ log_counts_top <- log2(counts_top + 1)
 pheatmap(log_counts_top, scale = "row")
 ```
 
+## Combined male and female
+
+Load all of the packages you'll need...
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+library(data.table)
+```
+
+Create data frame for DESeq to reference. This specifies which sample IDs are control and which are treatment (OA)…
+```{r}
+### data frame of conditions/treatments
+metaCombinedData <- data.frame(
+  sample = c("S12M", "S13M", "S16F", "S19F", "S22F", "S23M", "S29F", "S31M", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S48M", "S50F", "S52F", "S53F", "S54F", "S59M", "S64M", "S6M", "S76F", "S77F", "S7M", "S9M"),
+  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed")
+)
+print(metaCombinedData)
+```
+
+Load count matrix...
+```{r}
+combinedCountmatrix <- read.delim("~/github/oyster-lnc/output/02-kallisto-merge/merged_counts.txt", header = TRUE, sep = '\t')
+
+
+head(combinedCountmatrix)
+```
+
+Round counts to integers so they can be run through DESeq2 and summarize countmatrix structure to check and see that it worked…
+```{r}
+combinedCountmatrix <- round(combinedCountmatrix, 0)
+str(combinedCountmatrix)
+```
+
+Make sure number of count matrix columns matches number of meta dataframe rows...
+```{r}
+# Check the dimensions of countData matrix
+ncol(combinedCountmatrix)
+
+# Check the dimensions of colData matrix
+nrow(metaCombinedData)
+
+```
+
+Use the DESeq2 package to create a DESeqDataSet object from a count matrix and metadata…
+```{r}
+c.deseq2.dds <- DESeqDataSetFromMatrix(countData = combinedCountmatrix,
+                                     colData = metaCombinedData, 
+                                     design = ~ treatment)
+```
+
+Performs differential expression analysis using DESeq2 on the c.deseq2.dds object, extract the results, converts them into a data frame, and then orders the rows of the data frame alphabetically based on the row names…
+```{r}
+c.deseq2.dds <- DESeq(c.deseq2.dds)
+c.deseq2.res <- results(c.deseq2.dds)
+c.deseq2.res <- as.data.frame(c.deseq2.res)  # Convert to data frame
+c.deseq2.res <- c.deseq2.res[order(rownames(c.deseq2.res)), ]
+```
+
+Check...
+```{r}
+str(c.deseq2.res)
+```
+
+Count the number of hits with adjusted p-value less then 0.05…
+```{r}
+dim(c.deseq2.res[!is.na(c.deseq2.res$padj) & c.deseq2.res$padj <= 0.05, ])
+```
+
+```{r}
+# Subset the hits with adjusted p-value less than 0.05
+c.hits <- c.deseq2.res[!is.na(c.deseq2.res$padj) & c.deseq2.res$padj <= 0.05, ]
+
+# View the transcript IDs of the hits
+transcript_ids <- rownames(c.hits)
+print(transcript_ids)
+```
+
+Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
+```{r}
+tmp <- c.deseq2.res
+# The main plot
+plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
+     main="Combined - OA Treatment vs. Control  (pval <= 0.05)",
+     xlab="mean of normalized counts",
+     ylab="Log2 Fold Change")
+# Getting the significant points and plotting them again so they're a different color
+tmp.sig <- c.deseq2.res[!is.na(c.deseq2.res$padj) & c.deseq2.res$padj <= 0.05, ]
+points(tmp.sig$baseMean, tmp.sig$log2FoldChange, pch=20, cex=0.45, col="red")
+# 2 FC lines
+abline(h=c(-1,1), col="blue")
+```
+
+Generate a PCA plot to see how all of the differential expression results cluster…
+```{r}
+c.vsd <- vst(c.deseq2.dds, blind = FALSE)
+plotPCA(c.vsd, intgroup = "treatment")
+```
+
+```{r}
+print(c.deseq2.dds)
+```
+
+
+Create heatmaps to view the top 30 differentially expressed lncRNAs…
+```{r}
+# Select top 30 differentially expressed genes
+res <- results(c.deseq2.dds)
+res_ordered <- res[order(res$padj), ]
+top_genes <- row.names(res_ordered)[1:30]
+
+# Extract counts and normalize
+counts <- counts(c.deseq2.dds, normalized = TRUE)
+counts_top <- counts[top_genes, ]
+
+# Log-transform counts
+log_counts_top <- log2(counts_top + 1)
+
+# Generate heatmap
+pheatmap(log_counts_top, scale = "row")
+```
+
+
+
+
+
+
+
 
 
 
