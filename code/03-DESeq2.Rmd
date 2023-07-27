@@ -191,6 +191,33 @@ f.vsd <- vst(f.deseq2.dds, blind = FALSE)
 plotPCA(f.vsd, intgroup = "treatment")
 ```
 
+
+```{r}
+library("ggplot2")
+install.packages("ggrepel")
+library("ggrepel")
+library("DESeq2")
+
+f.vsd <- vst(f.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData <- plotPCA(f.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+# create a ggplot object
+p <- ggplot(pcaData, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData)))
+
+print(p)
+
+```
+
+
 ```{r}
 print(f.deseq2.dds)
 ```
@@ -314,7 +341,52 @@ plotPCA(m.vsd, intgroup = "treatment")
 ```
 
 ```{r}
-print(m.deseq2.dds)
+library("ggplot2")
+install.packages("ggrepel")
+library("ggrepel")
+library("DESeq2")
+
+m.vsd <- vst(m.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData <- plotPCA(m.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+# create a ggplot object
+p <- ggplot(pcaData, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData)))
+
+print(p)
+
+```
+
+
+```{r}
+# Extract the VST data
+vst_data <- assay(m.vsd)
+
+# Perform PCA
+pca_result <- prcomp(t(vst_data))
+
+# The PCA result is a list with several components. To see the scores of the samples on the principal components:
+pca_scores <- pca_result$x
+
+# This is a table where the rows correspond to samples and the columns correspond to principal components
+print(pca_scores)
+
+# If you want to visualize this in a more customized way than plotPCA allows:
+plot(pca_scores[,1], pca_scores[,2],
+     xlab = "PC1", ylab = "PC2",
+     main = "PCA plot")
+```
+
+```{r}
+print(m.vsd)
 ```
 
 Create heatmaps to view the top 50 differentially expressed lncRNAs…
@@ -456,6 +528,32 @@ log_counts_top <- log2(counts_top + 1)
 
 # Generate heatmap
 pheatmap(log_counts_top, scale = "row")
+```
+
+Label PCA plots...
+```{r}
+library("ggplot2")
+install.packages("ggrepel")
+library("ggrepel")
+library("DESeq2")
+
+c.vsd <- vst(c.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData <- plotPCA(c.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+# create a ggplot object
+p <- ggplot(pcaData, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData)), max.overlaps = Inf)
+
+print(p)
+
 ```
 
 

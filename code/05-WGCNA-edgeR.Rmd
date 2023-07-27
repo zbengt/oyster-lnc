@@ -1,106 +1,12 @@
 ---
-title: "04-WGCNA"
+title: "05-WGCNA-edgeR"
 author: "Zach Bengtsson"
-date: "2023-07-13"
+date: "2023-07-27"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-```
-
-```{r}
-install.packages("impute")
-install.packages("preprocessCore")
-install.packages("GO.db")
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-BiocManager::install("WGCNA")
-
-
-
-```
-
-```{r}
-library(WGCNA)
-```
-
-
-```{r}
-countMatrix <- read.table("~/github/oyster-lnc/output/02-kallisto-merge/merged_counts.txt", header = TRUE, row.names = 1, sep = "\t")
-
-```
-
-```{r}
-countMatrix <- t(countMatrix)
-
-```
-
-```{r}
-correlationMatrix <- cor(countMatrix)
-
-```
-
-```{r}
-install.packages("doParallel")  # Install the doParallel package if not already installed
-library(doParallel)
-
-library(WGCNA)
-
-# Register a parallel backend with the desired number of cores (adjust 'ncores' as needed)
-ncores <- 4  # Number of cores to use for parallel computation
-cl <- makeCluster(ncores)
-registerDoParallel(cl)
-
-# Run the pickSoftThreshold function with potential parallelization
-softPower <- pickSoftThreshold(correlationMatrix)$power
-
-# Stop the parallel backend when finished
-stopCluster(cl)
-
-
-softPower <- pickSoftThreshold(correlationMatrix)$power
-signedNetwork <- signedKME(correlationMatrix, power = softPower)
-
-```
-
-```{r}
-# Assuming you have a signed network called 'signedNetwork'
-
-# Calculate the topological overlap matrix (TOM) similarity
-TOMsimilarity <- TOMsimilarity(signedNetwork)
-
-# Convert the TOM similarity to distance
-TOMdistance <- 1 - TOMsimilarity
-
-# Calculate the adjacency matrix from the TOM distance
-adjacencyMatrix <- TOMsimilarityToDistance(TOMdistance)
-
-
-```
-
-
-```{r}
-moduleColors <- blockwiseModules(adjacencyMatrix, power = softPower,
-                                 TOMType = "unsigned", minModuleSize = 30,
-                                 reassignThreshold = 0, mergeCutHeight = 0.25,
-                                 numericLabels = TRUE)
-
-```
-
-```{r}
-moduleLabels <- moduleColors$colors
-
-# Additional analyses, such as module-trait relationships or functional enrichment, can be performed here
-
-```
-
-```{r}
-plotDendroAndColors(dendro = moduleColors$dendrograms[[1]], colors = moduleColors$colors)
-plotModuleTraitCor(moduleColors, moduleTraitMatrix)
-exportNetworkToCytoscape(adjacencyMatrix, edgeFile = "edges.csv", nodeFile = "nodes.csv")
-
-
 ```
 
 ## WGCNA with edgeR normalization
@@ -111,19 +17,19 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 
 BiocManager::install("edgeR")
-BiocManager::install("WGCNA")
 BiocManager::install("GO.db")
 BiocManager::install("BiocGenerics")
+BiocManager::install("WGCNA")
 
 install.packages("fastcluster")
 conflicts(detail = TRUE)
 ```
 ```{r}
 library(edgeR)
-library(WGCNA)
 library(GO.db)
 library(fastcluster)
 library(BiocGenerics)
+library(WGCNA)
 ```
 
 
@@ -189,15 +95,31 @@ plotDendroAndColors(net$dendrograms[[1]], mergedColors[net$blockGenes[[1]]],
 
 ```
 
+```{r}
+# Module Eigengenes
+MEs <- moduleEigengenes(t(log2_cpm), colors = mergedColors)$eigengenes
+```
+
+```{r}
+# Module-Trait Relationships
+MEs_trait_correlation <- cor(MEs, t(trait_data))
+MEs_trait_pvalue <- corPvalueStudent(as.matrix(MEs_trait_correlation), ncol(trait_data))
+
+# Gene Significance and Module Membership
+GS <- apply(log2_cpm, 1, function(row) cor(row, t(trait_data)[,1], use = "p"))  # for the first trait
+MM <- moduleEigengenes(t(log2_cpm), mergedColors)$eigengenes  # Module Membership
+```
 
 
+```{r}
+# Count the number of genes in each module
+moduleSizes <- table(net$colors)
 
-
-
-
-
-
-
+# Plot the module sizes
+barplot(moduleSizes, main = "Number of genes in each module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes))
+```
 
 
 
