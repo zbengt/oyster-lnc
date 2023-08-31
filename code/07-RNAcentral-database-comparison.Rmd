@@ -1,0 +1,201 @@
+---
+title: "07-RNAcentral-database-comparisons"
+author: "Zach Bengtsson"
+date: "2023-08-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Download Database FASTAs
+
+## NONCODE
+Chosen for the number of species and sequences, though all of the organisms are mammals and birds
+- 234,669 RNA sequences from 7 organisms contributed to RNAcentral
+- the shortest sequence has 201 nucleotides, the longest 244,296
+- the average length is 1,130 nucleotides
+- database version: NONCODE2016
+
+```{bash}
+wget -P ~/github/oyster-lnc/data/databases https://ftp.ebi.ac.uk/pub/databases/RNAcentral/current_release/sequences/by-database/noncode.fasta 
+```
+
+## LncBook
+- 322,552 RNA sequences from 1 organism contributed to RNAcentral
+- the shortest sequence has 54 nucleotides, the longest 205,012
+- the average length is 1,686 nucleotides
+- database version: 2.0
+
+```{bash}
+wget -P ~/github/oyster-lnc/data/databases https://ftp.ebi.ac.uk/pub/databases/RNAcentral/current_release/sequences/by-database/lncbook.fasta
+```
+
+## All RNAcentral
+```{bash}
+wget -P ~/github/oyster-lnc/data/databases https://ftp.ebi.ac.uk/pub/databases/RNAcentral/current_release/sequences/rnacentral_active.fasta.gz
+```
+
+```{bash}
+gunzip ~/github/oyster-lnc/data/databases/rnacentral_active.fasta.gz
+```
+
+
+# BLAST Runs
+
+## NONCODE
+
+Make sure NONCODE is in blastdb format...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/makeblastdb \
+-in ~/github/oyster-lnc/data/databases/noncode.fasta \
+-dbtype nucl \
+-out ~/github/oyster-lnc/data/databases/NONCODE-blastdb/noncode-blastdb
+```
+
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/NONCODE-blastdb/noncode-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/NONCODE/NONCODE.tab \
+-evalue 1E-40 \
+-num_threads 20 \
+-max_target_seqs 10 \
+-outfmt 6
+```
+
+## LncBook
+
+Reformat FASTAs to ensure tabs aren't an issue...
+```{bash}
+# For lncRNA FASTA
+awk 'BEGIN {RS=">"} NR>1 {sub("\n","\t"); gsub("\n",""); print ">"$0}' ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa | sed 's/\t/\n/g' > ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/reformat-GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+
+# For LncBook FASTA
+awk 'BEGIN {RS=">"} NR>1 {sub("\n","\t"); gsub("\n",""); print ">"$0}' ~/github/oyster-lnc/data/databases/lncbook.fasta | sed 's/\t/\n/g' > ~/github/oyster-lnc/data/databases/reformat-lncbook.fasta
+
+```
+
+
+Make sure LncBook is in blastdb format...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/makeblastdb \
+-in ~/github/oyster-lnc/data/databases/reformat-lncbook.fasta \
+-dbtype nucl \
+-out ~/github/oyster-lnc/data/databases/LncBook-blastdb/lncbook-blastdb
+```
+
+Run blastn...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/LncBook-blastdb/lncbook-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/LncBook/LncBook.tab \
+-num_threads 20 \
+-max_target_seqs 1 \
+-outfmt 6
+```
+
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/LncBook-blastdb/lncbook-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/LncBook/Test-LncBook.tab \
+-outfmt 6
+```
+
+## Full RNA Central Blast
+
+Make sure LncBook is in blastdb format...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/makeblastdb \
+-in ~/github/oyster-lnc/data/databases/rnacentral_active.fasta \
+-dbtype nucl \
+-out ~/github/oyster-lnc/data/databases/RNAcentral-blastdb/rnacentral-blastdb
+```
+
+Run blastn...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/RNAcentral-blastdb/rnacentral-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral.tab \
+-num_threads 20 \
+-max_target_seqs 500 \
+-outfmt 6
+```
+
+# Blast Results
+
+```{r}
+blast_data <- read.table("~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral.tab", header = FALSE, sep = "\t",
+                         col.names = c("qseqid", "sseqid", "pident", "length", "mismatch",
+                                       "gapopen", "qstart", "qend", "sstart", "send", "evalue", "bitscore"))
+
+```
+
+```{r}
+sum(blast_data$evalue == 0, na.rm = TRUE)
+```
+
+```{r}
+blast_data$evalue[blast_data$evalue == 0] <- 1e-300  # or any other very small value
+```
+
+
+```{r}
+library(ggplot2)
+
+ggplot(blast_data, aes(x = evalue)) +
+  geom_histogram(binwidth = 0.1, fill = "blue", color = "black", alpha = 0.7) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  labs(title = "Distribution of E-values",
+       x = "E-value (log scale)",
+       y = "Count") +
+  theme_minimal()
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot(blast_data, aes(x = evalue)) +
+  geom_density(fill = "blue", color = "black", alpha = 0.7) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  labs(title = "Distribution of E-values",
+       x = "E-value (log scale)",
+       y = "Density") +
+  theme_minimal()
+
+```
+
+```{r}
+ggplot(blast_data, aes(x = pident)) +
+  geom_histogram(binwidth = 1, fill = "red", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Percentage Identity",
+       x = "Percentage Identity",
+       y = "Count") +
+  theme_minimal()
+
+```
+
+# Unique Matches
+
+```{r}
+# Count of unique transcript IDs with matches
+num_unique_matches <- length(unique(blast_data$qseqid))
+num_unique_matches
+
+```
+
+Total lncRNA transcripts in FASTA...
+```{bash}
+grep -c '^>' ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+
+```
+
+
+
