@@ -40,7 +40,8 @@ library(WGCNA)
 # Create samples data frame
 samples <- data.frame(
   sample = c("S12M", "S13M", "S16F", "S19F", "S22F", "S23M", "S29F", "S31M", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S48M", "S50F", "S52F", "S53F", "S54F", "S59M", "S64M", "S6M", "S76F", "S77F", "S7M", "S9M"),
-  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed")
+  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed"),
+  sex = c("male", "male", "female", "female", "female", "male", "female", "male", "female", "female", "female", "female", "female", "female", "male", "female", "female", "female", "female", "male", "male", "male", "female", "female", "male", "male")
 )
 
 # Import count matrix
@@ -120,6 +121,266 @@ barplot(moduleSizes, main = "Number of genes in each module",
         xlab = "Module colors", ylab = "Number of genes",
         col = names(moduleSizes))
 ```
+
+# Subsetting for males and females to complete 2 separate WGCNAs
+
+## Subset dataset
+
+```{r}
+# Subset for males
+male_samples <- samples[samples$sex == "male", ]
+male_log2_cpm <- log2_cpm[, colnames(log2_cpm) %in% male_samples$sample]
+
+# Subset for females
+female_samples <- samples[samples$sex == "female", ]
+female_log2_cpm <- log2_cpm[, colnames(log2_cpm) %in% female_samples$sample]
+
+```
+
+## Male Runs
+
+## Unsigned
+
+```{r}
+# Subset the data for males
+male_samples <- samples[samples$sex == "male", ]
+male_counts <- counts[, male_samples$sample]
+
+# Convert male counts to DGEList object
+dge_male <- DGEList(counts = male_counts)
+
+# Normalization using TMM method
+dge_male <- calcNormFactors(dge_male, method = "TMM")
+
+# Compute log2 CPM values, with prior.count=1
+log2_cpm_male <- cpm(dge_male, log = TRUE, prior.count = 1)
+
+# Filter out lowly expressed genes
+keep_male <- rowSums(cpm(dge_male) > 1) >= 2
+log2_cpm_male <- log2_cpm_male[keep_male,]
+
+# Prepare the trait data for males
+trait_data_male <- as.data.frame(t(male_samples))
+
+# Run WGCNA analysis for males
+enableWGCNAThreads()
+```
+
+```{r}
+powers <- c(1:10)
+pickSoftThreshold(t(log2_cpm_male), powerVector = powers, verbose = 5)
+```
+
+## M - Unsigned Figures
+
+Pick soft threshold identified power of 7 as the best choice to achieve a scale-free topology for your male dataset...
+```{r}
+# Module detection for males
+net_male = blockwiseModules(t(log2_cpm_male), power = 7,
+                       TOMType = "unsigned", minModuleSize = 30,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE, saveTOMFileBase = "TOM_male",
+                       verbose = 3)
+
+# Convert labels to colors for easier plotting for males
+mergedColors_male = labels2colors(net_male$colors)
+
+# Plotting for males
+plotDendroAndColors(net_male$dendrograms[[1]], mergedColors_male[net_male$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# Count the number of genes in each male module
+moduleSizes_male <- table(net_male$colors)
+
+# Plot the male module sizes
+barplot(moduleSizes_male, main = "Number of genes in each male module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes_male))
+
+```
+
+```{r}
+# Assuming 'net' is your WGCNA network object and 'geneData' is your original expression matrix
+# 1. Module Eigengenes
+MEs = net_male$MEs
+# 2. Module Membership
+moduleColors = net_male$colors # these are the module assignments for each gene
+membershipMatrix = net_male$MM # these are the module membership values for each gene
+# You can subset these to get information on a specific module
+specificME = net_male$MEs[, "moduleColor"]
+specificMM = membershipMatrix[, "moduleColor"]
+# 3. Original Expression values
+moduleGenes = names(moduleColors[moduleColors == "moduleColor"])
+moduleExpression = geneData[moduleGenes, ]
+# 4. Heatmaps
+heatmap(moduleExpression)
+```
+
+## Signed
+
+## M - Signed Figures
+
+```{r}
+# Module detection for males
+net_male = blockwiseModules(t(log2_cpm_male), power = 7,
+                       TOMType = "signed", minModuleSize = 30,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE, saveTOMFileBase = "TOM_male",
+                       verbose = 3)
+
+# Convert labels to colors for easier plotting for males
+mergedColors_male = labels2colors(net_male$colors)
+
+# Plotting for males
+plotDendroAndColors(net_male$dendrograms[[1]], mergedColors_male[net_male$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# Count the number of genes in each male module
+moduleSizes_male <- table(net_male$colors)
+
+# Plot the male module sizes
+barplot(moduleSizes_male, main = "Number of genes in each male module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes_male))
+
+```
+
+## Female Runs
+
+## Unsigned
+
+```{r}
+# Subset the data for females
+female_samples <- samples[samples$sex == "female", ]
+female_counts <- counts[, female_samples$sample]
+
+# Convert female counts to DGEList object
+dge_female <- DGEList(counts = female_counts)
+
+# Normalization using TMM method
+dge_female <- calcNormFactors(dge_female, method = "TMM")
+
+# Compute log2 CPM values, with prior.count=1
+log2_cpm_female <- cpm(dge_female, log = TRUE, prior.count = 1)
+
+# Filter out lowly expressed genes
+keep_female <- rowSums(cpm(dge_female) > 1) >= 2
+log2_cpm_female <- log2_cpm_female[keep_female,]
+
+# Prepare the trait data for females
+trait_data_female <- as.data.frame(t(female_samples))
+
+# Run WGCNA analysis for females
+enableWGCNAThreads()
+```
+
+Select power to achieve scale-free topology...
+```{r}
+powers <- c(1:10)
+pickSoftThreshold(t(log2_cpm_female), powerVector = powers, verbose = 5)
+```
+
+## F - Unsigned Figures
+
+Power of 3 identified by pickSoftThreshold...
+```{r}
+# Module detection for females
+net_female = blockwiseModules(t(log2_cpm_female), power = 3,
+                       TOMType = "unsigned", minModuleSize = 30,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE, saveTOMFileBase = "TOM_female",
+                       verbose = 3)
+
+# Convert labels to colors for easier plotting for females
+mergedColors_female = labels2colors(net_female$colors)
+
+# Plotting for females
+plotDendroAndColors(net_female$dendrograms[[1]], mergedColors_female[net_female$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# Count the number of genes in each female module
+moduleSizes_female <- table(net_female$colors)
+
+# Plot the female module sizes
+barplot(moduleSizes_female, main = "Number of genes in each female module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes_female))
+
+```
+
+## Signed
+
+```{r}
+# Subset the data for females
+female_samples <- samples[samples$sex == "female", ]
+female_counts <- counts[, female_samples$sample]
+
+# Convert female counts to DGEList object
+dge_female <- DGEList(counts = female_counts)
+
+# Normalization using TMM method
+dge_female <- calcNormFactors(dge_female, method = "TMM")
+
+# Compute log2 CPM values, with prior.count=1
+log2_cpm_female <- cpm(dge_female, log = TRUE, prior.count = 1)
+
+# Filter out lowly expressed genes
+keep_female <- rowSums(cpm(dge_female) > 1) >= 2
+log2_cpm_female <- log2_cpm_female[keep_female,]
+
+# Prepare the trait data for females
+trait_data_female <- as.data.frame(t(female_samples))
+
+# Run WGCNA analysis for females
+enableWGCNAThreads()
+```
+
+Select power to achieve scale-free topology...
+```{r}
+powers <- c(1:10)
+pickSoftThreshold(t(log2_cpm_female), powerVector = powers, verbose = 5)
+```
+
+## F - Signed Figures
+
+Power of 3 identified by pickSoftThreshold...
+```{r}
+# Module detection for females
+net_female = blockwiseModules(t(log2_cpm_female), power = 3,
+                       TOMType = "signed", minModuleSize = 30,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE, saveTOMFileBase = "TOM_female",
+                       verbose = 3)
+
+# Convert labels to colors for easier plotting for females
+mergedColors_female = labels2colors(net_female$colors)
+
+# Plotting for females
+plotDendroAndColors(net_female$dendrograms[[1]], mergedColors_female[net_female$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# Count the number of genes in each female module
+moduleSizes_female <- table(net_female$colors)
+
+# Plot the female module sizes
+barplot(moduleSizes_female, main = "Number of genes in each female module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes_female))
+
+```
+
 
 
 
