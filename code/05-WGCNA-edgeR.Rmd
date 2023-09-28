@@ -30,6 +30,7 @@ library(GO.db)
 library(fastcluster)
 library(BiocGenerics)
 library(WGCNA)
+library(tidyverse)
 ```
 
 
@@ -203,21 +204,86 @@ barplot(moduleSizes_male, main = "Number of genes in each male module",
 ```
 
 ```{r}
-# Assuming 'net' is your WGCNA network object and 'geneData' is your original expression matrix
+# Assuming 'net_male' is your WGCNA network object for males and 'log2_cpm_male' is your original expression matrix
+
 # 1. Module Eigengenes
-MEs = net_male$MEs
+MEs_male = net_male$MEs
+
 # 2. Module Membership
-moduleColors = net_male$colors # these are the module assignments for each gene
-membershipMatrix = net_male$MM # these are the module membership values for each gene
+moduleColors_male = net_male$colors  # these are the module assignments for each gene
+membershipMatrix_male = as.data.frame(cor(t(log2_cpm_male), MEs_male, method = "pearson"))  # Compute module membership for each gene
+colnames(membershipMatrix_male) = paste0("ME", names(MEs_male))  # This will name columns like MEblue, MEbrown, etc.
+
+# Let's say you're interested in the blue module
+moduleColor = "1"  # Replace with the numeric label of the module you're interested in
+
 # You can subset these to get information on a specific module
-specificME = net_male$MEs[, "moduleColor"]
-specificMM = membershipMatrix[, "moduleColor"]
+specificME_male = MEs_male[, moduleColor]
+specificMM_male = membershipMatrix_male[, paste0("ME", moduleColor)]
+
 # 3. Original Expression values
-moduleGenes = names(moduleColors[moduleColors == "moduleColor"])
-moduleExpression = geneData[moduleGenes, ]
-# 4. Heatmaps
-heatmap(moduleExpression)
+moduleGenes_male = names(moduleColors_male[moduleColors_male == moduleColor])
+moduleExpression_male = t(log2_cpm_male)[moduleGenes_male, ]
+
+# 4. Heatmaps (You may want to standardize or z-score the expression values before plotting)
+heatmap(moduleExpression_male, Rowv=NA, scale="row", margins=c(5,10))  # This is a basic heatmap; you may want to adjust parameters for better visualization
+
 ```
+
+```{r}
+colnames(MEs_male)
+
+```
+
+```{r}
+print(moduleColors_male)
+```
+
+
+```{r}
+# Assuming 'net_male' is your WGCNA network object for males and 'log2_cpm_male' is your original expression matrix
+
+# 1. Module Eigengenes
+MEs_male = net_male$MEs
+
+# 2. Module Membership
+moduleColors_male = net_male$colors  # these are the module assignments for each gene
+membershipMatrix_male = as.data.frame(cor(t(log2_cpm_male), MEs_male, method = "pearson"))  # Compute module membership for each gene
+colnames(membershipMatrix_male) = paste0("ME", names(MEs_male))  # This will name columns like MEblue, MEbrown, etc.
+
+# Let's say you're interested in the blue module
+moduleColor = "1"  # Replace with the numeric label of the module you're interested in
+
+# You can subset these to get information on a specific module
+specificME_male = MEs_male[, moduleColor]
+specificMM_male = membershipMatrix_male[, paste0("ME", moduleColor)]
+
+# 3. Original Expression values
+moduleGenes_male = names(moduleColors_male[moduleColors_male == moduleColor])
+moduleExpression_male = t(log2_cpm_male)[moduleGenes_male, ]
+
+# 4. Heatmaps (You may want to standardize or z-score the expression values before plotting)
+heatmap(moduleExpression_male, Rowv=NA, scale="row", margins=c(5,10))  # This is a basic heatmap; you may want to adjust parameters for better visualization
+
+
+```
+
+
+```{r}
+# Convert moduleColors to a tibble
+moduleColors_tibble <- as_tibble(moduleColors_male, rownames = "Gene")
+
+# Filter genes that belong to a specific module
+moduleGenes <- moduleColors_tibble %>% 
+                  filter(value == "value") %>% 
+                  pull(Gene)
+
+# Get the expression data for these genes
+moduleExpression_tibble <- geneData_tibble %>% 
+                              filter(Gene %in% moduleGenes)
+```
+
+
 
 ## Signed
 
@@ -380,6 +446,201 @@ barplot(moduleSizes_female, main = "Number of genes in each female module",
         col = names(moduleSizes_female))
 
 ```
+
+```{r}
+# Calculate module eigengenes
+MEs_female = moduleEigengenes(t(log2_cpm_female), colors = net_female$colors)$eigengenes
+
+# Organize the module eigengenes into a data frame for easier handling later
+MEs_female = orderMEs(MEs_female)
+
+```
+
+```{r}
+# Hierarchical clustering of module eigengenes
+mediss = 1 - cor(MEs_female)
+METree = hclust(as.dist(mediss), method = "average")
+
+```
+
+```{r}
+# Plot the dendrogram
+plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+
+```
+
+```{r}
+# Calculate the dissimilarity threshold from the correlation threshold
+dissimilarityThreshold = 1 - 0.60
+
+# Merge module colors based on the cut height (dissimilarity threshold)
+# Note: This step actually performs the merging based on the determined cut height
+mergedModules_female = mergeCloseModules(t(log2_cpm_female), colors = net_female$colors, cutHeight = dissimilarityThreshold)
+
+# Extract the 'colors' vector from the list returned by mergeCloseModules
+mergedColors_female = mergedModules_female$colors
+
+# New module eigengenes after merging
+newMEs_female = moduleEigengenes(t(log2_cpm_female), colors = mergedColors_female)$eigengenes
+newMEs_female = orderMEs(newMEs_female)
+
+```
+
+```{r}
+# Recalculate Module Eigengenes with the new merged colors
+MEs_female_merged = moduleEigengenes(t(log2_cpm_female), colors = mergedColors_female)$eigengenes
+
+# Reorder the module eigengenes
+MEs_female_merged = orderMEs(MEs_female_merged)
+
+# Recompute the hierarchical clustering dendrogram using the merged module eigengenes
+medissMerged = 1 - cor(MEs_female_merged)
+METreeMerged = hclust(as.dist(medissMerged), method = "average")
+
+# Plot the dendrogram and add the module colors underneath
+plot(METreeMerged, main = "Clustering of merged module eigengenes", xlab = "", sub = "")
+abline(h = dissimilarityThreshold, col = "red")
+
+# Add module colors underneath the dendrogram
+mergedModuleColors = mergedColors_female[order(MEs_female_merged)]
+colorLabels = as.character(unique(mergedModuleColors))
+moduleColors = labels2colors(mergedModuleColors)
+colorTable = table(mergedModuleColors)
+colorTable = colorTable[colorLabels]
+colors = labels2colors(colorLabels)
+barplot(-colorTable, col = colors, names.arg = colorLabels, horiz = TRUE, axes = FALSE, border = NA)
+
+```
+
+```{r}
+# Extract the unique color labels from the mergedColors_female vector
+uniqueMergedColors <- unique(mergedColors_female)
+
+# Determine the new number of modules after merging
+numMergedModules <- length(uniqueMergedColors)
+
+# Print the new number of modules
+print(paste("Number of modules after merging:", numMergedModules))
+
+```
+
+
+# Males - Signed
+
+## M - Signed Figures
+
+```{r}
+# Module detection for males
+net_male = blockwiseModules(t(log2_cpm_male), power = 7,
+                       TOMType = "signed", minModuleSize = 30,
+                       reassignThreshold = 0, mergeCutHeight = 0.25,
+                       numericLabels = TRUE, pamRespectsDendro = FALSE,
+                       saveTOMs = TRUE, saveTOMFileBase = "TOM_male",
+                       verbose = 3)
+
+# Convert labels to colors for easier plotting for males
+mergedColors_male = labels2colors(net_male$colors)
+
+# Plotting for males
+plotDendroAndColors(net_male$dendrograms[[1]], mergedColors_male[net_male$blockGenes[[1]]],
+                    "Module colors",
+                    dendroLabels = FALSE, hang = 0.03,
+                    addGuide = TRUE, guideHang = 0.05)
+
+# Count the number of genes in each male module
+moduleSizes_male <- table(net_male$colors)
+
+# Plot the male module sizes
+barplot(moduleSizes_male, main = "Number of genes in each male module",
+        xlab = "Module colors", ylab = "Number of genes",
+        col = names(moduleSizes_male))
+
+```
+
+```{r}
+# Calculate module eigengenes
+MEs_male = moduleEigengenes(t(log2_cpm_male), colors = net_male$colors)$eigengenes
+
+# Organize the module eigengenes into a data frame for easier handling later
+MEs_male = orderMEs(MEs_male)
+
+```
+
+```{r}
+# Hierarchical clustering of module eigengenes
+mediss = 1 - cor(MEs_male)
+METree = hclust(as.dist(mediss), method = "average")
+
+```
+
+```{r}
+# Plot the dendrogram
+plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+
+```
+
+```{r}
+# Calculate the dissimilarity threshold from the correlation threshold
+dissimilarityThreshold = 1 - 0.85
+
+# Merge module colors based on the cut height (dissimilarity threshold)
+# Note: This step actually performs the merging based on the determined cut height
+mergedModules_male = mergeCloseModules(t(log2_cpm_male), colors = net_male$colors, cutHeight = dissimilarityThreshold)
+
+# Extract the 'colors' vector from the list returned by mergeCloseModules
+mergedColors_male = mergedModules_male$colors
+
+# New module eigengenes after merging
+newMEs_male = moduleEigengenes(t(log2_cpm_male), colors = mergedColors_male)$eigengenes
+newMEs_male = orderMEs(newMEs_male)
+
+```
+
+```{r}
+# Recalculate Module Eigengenes with the new merged colors
+MEs_male_merged = moduleEigengenes(t(log2_cpm_male), colors = mergedColors_male)$eigengenes
+
+# Reorder the module eigengenes
+MEs_male_merged = orderMEs(MEs_male_merged)
+
+# Recompute the hierarchical clustering dendrogram using the merged module eigengenes
+medissMerged = 1 - cor(MEs_male_merged)
+METreeMerged = hclust(as.dist(medissMerged), method = "average")
+
+# Plot the dendrogram and add the module colors underneath
+plot(METreeMerged, main = "Clustering of merged module eigengenes", xlab = "", sub = "")
+abline(h = dissimilarityThreshold, col = "red")
+
+# Add module colors underneath the dendrogram
+mergedModuleColors = mergedColors_male[order(MEs_male_merged)]
+colorLabels = as.character(unique(mergedModuleColors))
+moduleColors = labels2colors(mergedModuleColors)
+colorTable = table(mergedModuleColors)
+colorTable = colorTable[colorLabels]
+colors = labels2colors(colorLabels)
+barplot(-colorTable, col = colors, names.arg = colorLabels, horiz = TRUE, axes = FALSE, border = NA)
+
+```
+
+```{r}
+# Extract the unique color labels from the mergedColors_female vector
+uniqueMergedColors <- unique(mergedColors_male)
+
+# Determine the new number of modules after merging
+numMergedModules <- length(uniqueMergedColors)
+
+# Print the new number of modules
+print(paste("Number of modules after merging:", numMergedModules))
+
+```
+
+
+
+
+
+
+
+
 
 
 
