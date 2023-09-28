@@ -57,321 +57,109 @@ library("dplyr")
 
 ```
 
-# **Data input and filtering**  
- 
-Import the data files.  
+# Data Import
+
+Import all of the data so it can be subset by sex later.
 
 ```{r}
-#load metadata sheet with sample name and developmental stage information
-metadata <- read.csv("Mcap2020/Data/TagSeq/Sample_Info.csv", header = TRUE, sep = ",")
-head(metadata)
+#full import before sex filtering
+samples <- data.frame(
+  sample = c("S12M", "S13M", "S16F", "S19F", "S22F", "S23M", "S29F", "S31M", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S48M", "S50F", "S52F", "S53F", "S54F", "S59M", "S64M", "S6M", "S76F", "S77F", "S7M", "S9M"),
+  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed"),
+  sex = c("male", "male", "female", "female", "female", "male", "female", "male", "female", "female", "female", "female", "female", "female", "male", "female", "female", "female", "female", "male", "male", "male", "female", "female", "male", "male")
+)
 
-#load gene count matrix generated from cluster computation
-gcount <- as.data.frame(read.csv("Mcap2020/Output/TagSeq/Mcapitata_gene_count_matrix_V3.csv", row.names="gene_id"), colClasses = double)
-head(gcount)
+head(samples)
+```
 
-#remove metamorphosed recruit 1 because this was the timepoint that we only had one sample for: D36, AH23
-#gcount<-gcount[ , !(names(gcount) %in% c("AH23"))]
-gcount<-gcount[ , !(names(gcount) %in% c("AH23_S54_L002.gtf"))]
+```{r}
+# Import count matrix
+counts <- read.table("~/github/oyster-lnc/output/02-kallisto-merge/merged_counts.txt", header = TRUE, row.names = 1, check.names = FALSE)
 
-metadata <- metadata%>%
-  filter(!sample_id=="AH23")
+head(counts)
+```
+
+```{r}
+#round counts to the nearest integer
+counts <- round(counts, 0)
+str(counts)
+```
+
+# Female
+
+## **Data input and filtering**  
+ 
+Subset data by sex, for females in this case.
+
+```{r}
+#load metadata but only for female samples
+metadataF <- samples[samples$sex == "female", ]
+head(metadataF)
+
+#load counts but only for female samples
+countsF <- counts[, female_samples$sample]
+head(countsF)
+```
+
+```{r}
+#load gene count matrix for females only
+gcountF <- countsF
+head(gcountF)
+
 ```
 
 Check that there are no genes with 0 counts across all samples.
 
 ```{r}
-nrow(gcount)
-gcount<-gcount %>%
-     mutate(Total = rowSums(.[, 1:38]))%>%
+nrow(gcountF)
+gcountF<-gcountF %>%
+     mutate(Total = rowSums(.[, 1:16]))%>%
     filter(!Total==0)%>%
     dplyr::select(!Total)
-nrow(gcount)
+nrow(gcountF)
 ```
-We had 54,384 genes, which was filtered down to 34,223 by removing genes with row sums of 0 (those not detected in our sequences).  
- 
+We had 4750 lncRNAs, which was filtered down to 4552 by removing genes with row sums of 0 (those not detected in our sequences).  
+
 Conduct data filtering, this includes:  
 
-*pOverA*: Specifying the minimum count for a proportion of samples for each gene. Here, we are using a pOverA of 0.07. This is because we have 38 samples with a minimum of n=3 samples per lifestage. Therefore, we will accept genes that are present in 3/38 = 0.07 of the samples because we expect different expression by life stage. We are further setting the minimum count of genes to 10, such that 7% of the samples must have a gene count of >10 in order for the gene to remain in the data set.  
-
-Filter in the package "genefilter". Pre-filtering our dataset to reduce the memory size dataframe, increase the speed of the transformation and testing functions, and improve quality of statistical analysis by removing low-coverage counts. Removed counts could represent outliers in the data and removing these improves sensitivity of statistical tests.   
+*pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.  
 
 ```{r}
-filt <- filterfun(pOverA(0.07,10))
+filtF <- filterfun(pOverA(0.5,0))
 
 #create filter for the counts data
-gfilt <- genefilter(gcount, filt)
+gfiltF <- genefilter(gcountF, filtF)
 
 #identify genes to keep by count filter
-gkeep <- gcount[gfilt,]
+gkeepF <- gcountF[gfiltF,]
 
 #identify genes to keep by count filter
-gkeep <- gcount[gfilt,]
+gkeepF <- gcountF[gfiltF,]
 
 #identify gene lists
-gn.keep <- rownames(gkeep)
+gn.keepF <- rownames(gkeepF)
 
 #gene count data filtered in PoverA, P percent of the samples have counts over A
-gcount_filt <- as.data.frame(gcount[which(rownames(gcount) %in% gn.keep),])
+gcount_filtF <- as.data.frame(gcountF[which(rownames(gcountF) %in% gn.keepF),])
 
 #How many rows do we have before and after filtering?
-nrow(gcount) #Before
-nrow(gcount_filt) #After
+nrow(gcountF) #Before
+nrow(gcount_filtF) #After
 ```
 
-Before filtering, we had 34,223 genes. After filtering for pOverA, we have approximately 11,475 genes. This indicates that there were many genes present in <7% of samples at <5 counts per gene.  
+```{r}
+head(gcount_filtF)
+```
 
-In order for the DESeq2 algorithms to work, the SampleIDs on the metadta file and count matrices have to match exactly and in the same order. The following R clump will check to make sure that these match. Should return TRUE.  
+
+Before filtering, we had 4552 genes. After filtering for pOverA, we have approximately 4190 genes. 
+
+In order for the DESeq2 algorithms to work, the SampleIDs on the metadta file and count matrices have to match exactly and in the same order. The following R clump will check to make sure that these match. Should return TRUE.
+
 ```{r}
 #Checking that all row and column names match. Should return "TRUE"
-all(rownames(metadata$sample_id) %in% colnames(gcount_filt))
-all(rownames(metadata$sample_id) == colnames(gcount_filt)) 
-```
-
-Match metadata sample id's.  
-```{r}
-result<-sub("_.*", "", colnames(gcount_filt)) #keep characters before _
-#result2<-sub(".*AH", "", result) #keep characters after X
-colnames(gcount_filt)<-result #keep just sample number 
-```
-
-Display current order of metadata and gene count matrix.  
-```{r}
-metadata$sample_id
-colnames(gcount_filt)
-```
-
-Order metadata the same as the column order in the gene matrix.  
-```{r}
-list<-colnames(gcount_filt)
-list<-as.factor(list)
-
-metadata$sample_id<-as.factor(metadata$sample_id)
-
-# Re-order the levels
-metadata$sample_id <- factor(as.character(metadata$sample_id), levels=list)
-# Re-order the data.frame
-metadata_ordered <- metadata[order(metadata$sample_id),]
-metadata_ordered$sample_id
-
-metadata_ordered<-metadata_ordered%>%
-  dplyr::select(sample_id, lifestage, hpf, code)
-```
-
-Reorder the lifestage factor.  
-```{r}
-head(metadata_ordered)
-levels(as.factor(metadata_ordered$lifestage))
-
-metadata_ordered$lifestage<-as.factor(metadata_ordered$lifestage)
-
-metadata_ordered$lifestage<-fct_relevel(metadata_ordered$lifestage, "Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)")
-
-levels(as.factor(metadata_ordered$lifestage))
-
-#output metadata for other analyses 
-write_csv(metadata_ordered, "Mcap2020/Data/TagSeq/metadata_ordered.csv")
-```
-
-Plot the sequence counts after trimming in each sample to confirm that sequence depth is not different between lifestages.  
-```{r}
-reads<-read.csv("Mcap2020/Output/TagSeq/clean_seqs_stats.csv")
-
-#match in lifestage information 
-reads$lifestage<-metadata$lifestage[match(reads$Sample, metadata$sample_id)]
-head(reads)
-
-reads$lifestage<-as.factor(reads$lifestage)
-levels(reads$lifestage)
-
-reads$lifestage<-fct_relevel(reads$lifestage, "Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)")
-
-reads %>% ggplot(., aes(x = lifestage, y = M.Seqs)) +
-  geom_boxplot()
-```
-No pattern between reads and life stage. Note that "NA" here refers to the one metamorpohsed recruit time point that is removed from analysis.  
-
-# **Construct DESeq2 data set**  
-
-Create a DESeqDataSet design from gene count matrix and labels. Here we set the design to look at lifestage to test for any differences in gene expression across timepoints.
-```{r}
-#Set DESeq2 design
-gdds <- DESeqDataSetFromMatrix(countData = gcount_filt,
-                              colData = metadata_ordered,
-                              design = ~lifestage)
-```
-
-First we are going to log-transform the data using a variance stabilizing transforamtion (VST). This is only for visualization purposes. Essentially, this is roughly similar to putting the data on the log2 scale. It will deal with the sampling variability of low counts by calculating within-group variability (if blind=FALSE). Importantly, it does not use the design to remove variation in the data, and so can be used to examine if there may be any variability do to technical factors such as extraction batch effects.
-
-To do this we first need to calculate the size factors of our samples. This is a rough estimate of how many reads each sample contains compared to the others. In order to use VST (the faster log2 transforming process) to log-transform our data, the size factors need to be less than 4.
-
-Chunk should return TRUE if <4.  
-```{r}
-SF.gdds <- estimateSizeFactors(gdds) #estimate size factors to determine if we can use vst  to transform our data. Size factors should be less than 4 for us to use vst
-print(sizeFactors(SF.gdds)) #View size factors
-
-all(sizeFactors(SF.gdds)) < 4
-```
-
-All size factors are less than 4, so we can use VST transformation.  
-
-```{r}
-gvst <- vst(gdds, blind=FALSE) #apply a variance stabilizing transformation to minimize effects of small counts and normalize wrt library size
-head(assay(gvst), 3) #view transformed gene count data for the first three genes in the dataset.  
-```
-
-# **Conduct PERMANOVA by developmental time point**  
-
-Export data for PERMANOVA test.  
-```{r}
-test<-t(assay(gvst)) #export as matrix
-test<-as.data.frame(test)
-
-#add category columns
-test$Sample<-rownames(test)
-test$Lifestage<-metadata$lifestage[match(test$Sample, metadata$sample_id)]
-```
-
-Build PERMANOVA model.  
-```{r}
-scaled_test <-prcomp(test[c(1:11475)], scale=TRUE, center=TRUE)
-fviz_eig(scaled_test)
-
-# scale data
-vegan <- scale(test[c(1:11475)])
-
-# PerMANOVA 
-permanova<-adonis2(vegan ~ Lifestage, data = test, method='eu')
-permanova
-```
-
-Gene expression is significantly different between lifestages (p=0.001).  
-
-Permutation test for adonis under reduced model
-Terms added sequentially (first to last)
-Permutation: free
-Number of permutations: 999
-
-adonis2(formula = vegan ~ Lifestage, data = test, method = "eu")
-          Df SumOfSqs      R2      F Pr(>F)    
-Lifestage  9   318674 0.75057 9.3618  0.001 ***
-Residual  28   105901 0.24943                  
-Total     37   424575 1.00000    
-
-# **Examine PCA and sample distances**  
-
-Plot a heatmap to sample to sample distances  
-
-```{r}
-gsampleDists <- dist(t(assay(gvst))) #calculate distance matix
-gsampleDistMatrix <- as.matrix(gsampleDists) #distance matrix
-rownames(gsampleDistMatrix) <- colnames(gvst) #assign row names
-colnames(gsampleDistMatrix) <- NULL #assign col names
-colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255) #assign colors
-
-save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
-   stopifnot(!missing(x))
-   stopifnot(!missing(filename))
-   pdf(filename, width=width, height=height)
-   grid::grid.newpage()
-   grid::grid.draw(x$gtable)
-   dev.off()
-}
-
-pht<-pheatmap(gsampleDistMatrix, #plot matrix
-         clustering_distance_rows=gsampleDists, #cluster rows
-         clustering_distance_cols=gsampleDists, #cluster columns
-         col=colors) #set colors
-
-save_pheatmap_pdf(pht, "Mcap2020/Figures/TagSeq/GenomeV3/pheatmap.pdf")
-```
-
-Plot a PCA of samples by lifestages  
-
-```{r}
-gPCAdata <- plotPCA(gvst, intgroup = c("lifestage"), returnData=TRUE, ntop=11475) #use ntop to specify all genes
-
-percentVar <- round(100*attr(gPCAdata, "percentVar")) #plot PCA of samples with all data
-
-allgenesfilt_PCA <- ggplot(gPCAdata, aes(PC1, PC2, shape=lifestage)) + 
-  geom_point(size=3) +
-  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
-  scale_shape_manual(values = c("Egg (1 hpf)"=17, "Attached Recruit (231 hpf)"=1, "Embryo (5 hpf)"=10, "Embryo (38 hpf)"=5, "Embryo (65 hpf)"=14, "Larvae (93 hpf)"=11, "Larvae (163 hpf)"=6, "Larvae (231 hpf)"=2, "Metamorphosed Polyp (231 hpf)"=8, "Attached Recruit (183 hpf)"=3)) +
-  #xlim(-40,40)+ 
-  #ylim(-40,40)+
-  coord_fixed()+
-  theme_bw() + #Set background color
-  theme(panel.border = element_blank(), # Set border
-                     #panel.grid.major = element_blank(), #Set major gridlines 
-                     #panel.grid.minor = element_blank(), #Set minor gridlines
-                     axis.line = element_line(colour = "black"), #Set axes color
-        plot.background=element_blank()) # + #Set the plot background
-  #theme(legend.position = ("none")) #set title attributes
-allgenesfilt_PCA
-#ggsave("Mcap2020/Figures/TagSeq/GenomeV3/allgenesfilt-PCA.pdf", allgenesfilt_PCA, width=11, height=8)
-```
-
-This output is the same as genome V1 and V2 analyses.  
-
-Generate a PCA for visualization/presentations.  
-
-```{r}
-levels(gPCAdata$lifestage)
-
-allgenesfilt_PCA_visual <- 
-  ggplot(data=gPCAdata, aes(PC1, PC2, shape=lifestage, colour=lifestage)) + 
-  geom_point(size=5) +
-  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
-  
-  scale_shape_manual(name="Lifestage", values = c("Egg (1 hpf)"=17, "Embryo (5 hpf)"=16, "Embryo (38 hpf)"=15, "Embryo (65 hpf)"=17, "Larvae (93 hpf)"=15, "Larvae (163 hpf)"=16, "Larvae (231 hpf)"=17, "Metamorphosed Polyp (231 hpf)"=16, "Attached Recruit (183 hpf)"=15, "Attached Recruit (231 hpf)"=16)) +
-  
-  scale_colour_manual(name="Lifestage", values = c("Egg (1 hpf)"="#8C510A", "Embryo (5 hpf)"="#DFC27D", "Embryo (38 hpf)"="#DFC27D", "Embryo (65 hpf)"="#DFC27D", "Larvae (93 hpf)"="#80CDC1", "Larvae (163 hpf)"="#80CDC1", "Larvae (231 hpf)"="#80CDC1", "Metamorphosed Polyp (231 hpf)"="#003C30", "Attached Recruit (183 hpf)"="#BA55D3", "Attached Recruit (231 hpf)"="#BA55D3")) +
-  #xlim(-40,40)+ 
-  #ylim(-40,40)+
-  coord_fixed()+
-  theme_classic() + #Set background color
-  theme(panel.border = element_blank(), # Set border
-                     #panel.grid.major = element_blank(), #Set major gridlines 
-                     #panel.grid.minor = element_blank(), #Set minor gridlines
-                     axis.line = element_line(colour = "black"), #Set axes color
-        plot.background=element_blank()) # + #Set the plot background
-  #theme(legend.position = ("none")) #set title attributes
-allgenesfilt_PCA_visual
-
-#ggsave("Mcap2020/Figures/TagSeq/GenomeV3/allgenesfilt-PCA_visual.pdf", allgenesfilt_PCA_visual, width=11, height=8)
-```
-
-Generate a figure for manuscript.  
-```{r}
-genesPCA <- 
-  ggplot(data=gPCAdata, aes(PC1, PC2, shape=lifestage, colour=lifestage)) + 
-  geom_point(size=7, stroke=1) +
-  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
-  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
-  
-  scale_shape_manual(name="Lifestage", values = c("Egg (1 hpf)"=1, "Embryo (5 hpf)"=2, "Embryo (38 hpf)"=3, "Embryo (65 hpf)"=4, "Larvae (93 hpf)"=5, "Larvae (163 hpf)"=6, "Larvae (231 hpf)"=8, "Metamorphosed Polyp (231 hpf)"=11, "Attached Recruit (183 hpf)"=10, "Attached Recruit (231 hpf)"=12)) +
-  
-  scale_colour_manual(name="Lifestage", values = c("Egg (1 hpf)"="#8C510A", "Embryo (5 hpf)"="#DFC27D", "Embryo (38 hpf)"="#DFC27D", "Embryo (65 hpf)"="#DFC27D", "Larvae (93 hpf)"="#80CDC1", "Larvae (163 hpf)"="#80CDC1", "Larvae (231 hpf)"="#80CDC1", "Metamorphosed Polyp (231 hpf)"="#003C30", "Attached Recruit (183 hpf)"="#BA55D3", "Attached Recruit (231 hpf)"="#BA55D3")) +
-  
-  #stat_ellipse() +
-  
-  xlim(-50,75)+ 
-  ylim(-40,30)+
-  #coord_fixed()+
-  theme_classic() + #Set background color
-  theme(panel.border = element_rect(colour = "black", fill=NA), # Set border
-                     #panel.grid.major = element_blank(), #Set major gridlines 
-                     #panel.grid.minor = element_blank(), #Set minor gridlines
-                     axis.line = element_line(colour = "black"), #Set axes color
-        plot.background=element_blank(), 
-        axis.title=element_text(size=14), 
-        axis.text=element_text(size=12, color="black"))  + #Set the plot background
-  theme(legend.position = ("none")); genesPCA
-
-ggsave("Mcap2020/Figures/TagSeq/GenomeV3/genes_lifestagePCA.png", genesPCA, width=6, height=5, dpi=300)
-ggsave("Mcap2020/Figures/TagSeq/GenomeV3/genes_lifestagePCA.pdf", genesPCA, width=6, height=5, dpi=300)
+all(rownames(metadataF$sample) %in% colnames(gcount_filtF))
+all(rownames(metadataF$sample) == colnames(gcount_filtF)) 
 ```
 
 
@@ -381,7 +169,8 @@ Data are analyzed using dynamic tree cut approach, our data set is not large eno
 
 Transpose the filtered gene count matrix so that the gene IDs are rows and the sample IDs are columns.
 ```{r}
-datExpr <- as.data.frame(t(assay(gvst))) #transpose to output to a new data frame with the column names as row names. And make all data numeric
+datExpr <- gcount_filtF
+print(datExpr)
 ```
 
 Check for genes and samples with too many missing values with goodSamplesGenes. There shouldn't be any because we performed pre-filtering
@@ -406,22 +195,18 @@ Remove flagged samples if the allOK is FALSE, not used here.
 #ncol(datExpr) #number genes after
 ```
 
-Look for outliers by examining tree of samples  
+There don't look to be any outliers, so we will move on with business as usual. 
+
 ```{r}
-sampleTree = hclust(dist(datExpr), method = "average");
-# Plot the sample tree: Open a graphic output window of size 12 by 9 inches
-# The user should change the dimensions if the window is too large or too small.
-pdf("Mcap2020/Figures/TagSeq/GenomeV3/outliers.pdf")
-plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
-dev.off()
+save(datExpr, file = "~/github/oyster-lnc/data/datExpr.RData")
 ```
-There don't look to be any outliers, so we will move on with business as usual.  
 
 ## Network construction and consensus module detection  
 
 ### Choosing a soft-thresholding power: Analysis of network topology β  
 
-The soft thresholding power (β) is the number to which the co-expression similarity is raised to calculate adjacency. The function pickSoftThreshold performs a network topology analysis. The user chooses a set of candidate powers, however the default parameters are suitable values.  
+The soft thresholding power (β) is the number to which the co-expression similarity is raised to calculate adjacency. The function pickSoftThreshold performs a network topology analysis. The user chooses a set of candidate powers, however the default parameters are suitable values.
+
 ```{r, message=FALSE, warning=FALSE}
 allowWGCNAThreads()
 # # Choose a set of soft-thresholding powers
@@ -450,103 +235,72 @@ plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
      main = paste("Mean connectivity"))
  text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
 ```
-I used a scale-free topology fit index **R^2 of 0.9**. This lowest recommended R^2 by Langfelder and Horvath is 0.8. I chose 0.9 because we want to use the smallest soft thresholding power that maximizes with model fit. It appears that our **soft thresholding power is 5** because it is the lowest power above the R^2=0.9 threshold that maximizes with model fit.  
+
+Power of 3 from previous use of pickSoftThreshold.
 
 ### Co-expression adjacency and topological overlap matrix similarity  
 
-Save Rdata necessary for analysis
 ```{r}
-save(datExpr, file = "Mcap2020/Output/TagSeq/GenomeV3/datExpr.RData")
+# Load the data saved
+load(file="~/github/oyster-lnc/data/datExpr.RData")
 ```
 
-Co-expression similarity and adjacency, using the soft thresholding power 5 and translate the adjacency into topological overlap matrix to calculate the corresponding dissimilarity. I will use a **signed network**.  
-```{r, }
-# #Set up workspace
-#getwd() #Display the current working directory
-# #If necessary, change the path below to the directory where the data files are stored. "." means current directory. On Windows use a forward slash / instead of the usual \.
-#workingDir = ".";
-# setwd(WGCNA_dev);
-# library(WGCNA) #Load the WGCNA package
-options(stringsAsFactors = FALSE) #The following setting is important, do not omit.
-enableWGCNAThreads() #Allow multi-threading within WGCNA. 
-# 
-# #Load the data saved in the first part
-adjTOM <- load(file="Mcap2020/Output/TagSeq/GenomeV3/datExpr.RData")
-adjTOM
-# 
-# #Run analysis
-softPower=5 #Set softPower to 5
-adjacency=adjacency(datExpr, power=softPower,type="signed") #Calculate adjacency
-
-TOM= TOMsimilarity(adjacency,TOMType = "signed") #Translate adjacency into topological overlap matrix
-#this step can take awhile 
-
-dissTOM= 1-TOM #Calculate dissimilarity in TOM
-
-#save(adjacency, TOM, dissTOM, file = "Mcap2020/Output/TagSeq/adjTOM.RData") #Save 
-
-#save(dissTOM, file = "Mcap2020/Output/TagSeq/dissTOM.RData") #Save 
-```
-
-Load in dissTOM file obtained from previous R chunk.    
 ```{r}
-#dissTOM_in <- load(file="Mcap2020/Output/TagSeq/dissTOM.RData") 
-#dissTOM_in
+# Set up workspace and allow multi-threading within WGCNA
+options(stringsAsFactors = FALSE)
+enableWGCNAThreads() 
+
+# Run analysis
+softPower = 3
+adjacency = adjacency(datExpr, power = softPower, type = "signed")
+TOM = TOMsimilarity(adjacency, TOMType = "signed")
+dissTOM = 1 - TOM
+
+# Save the results
+save(adjacency, TOM, dissTOM, file = "~/github/oyster-lnc/data/adjTOM.RData")
+save(dissTOM, file = "~/github/oyster-lnc/data/dissTOM.RData")
 ```
 
 ### Clustering using TOM
 
-Form distance matrix  
 ```{r}
-geneTree=flashClust(as.dist(dissTOM), method="average")
+dim(dissTOM)
+str(geneTree)  # Structure of the dendrogram object
+
 ```
 
-We will now plot a dendrogram of genes. Each leaf corresponds to a gene, branches grouping together densely are interconnected, highly co-expressed genes.  
+
 ```{r}
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/dissTOMClustering.pdf", width=20, height=20)
-plot(geneTree, xlab="", sub="", main= "Gene Clustering on TOM-based dissimilarity", labels= FALSE,hang=0.04)
-dev.off()
+# Load in dissTOM file
+tmp <- load(file="~/github/oyster-lnc/data/dissTOM.RData")
+
+# Form distance matrix and plot a dendrogram of genes
+geneTree <- flashClust(as.dist(dissTOM), method="average")
+plot(geneTree, xlab="", sub="", main= "Gene Clustering on TOM-based dissimilarity",hang=0.04)
 ```
 
 ### Module identification using dynamicTreeCut  
 
-Module identification is essentially cutting the branches off the tree in the dendrogram above. We like large modules, so we set the **minimum module size** relatively high, so we will set the minimum size at 30. 
-
 ```{r}
-minModuleSize = 30
+# Define minimum module size and identify modules
+minModuleSize = 10
 dynamicMods = cutreeDynamic(dendro = geneTree, distM = dissTOM,
-deepSplit = TRUE, pamRespectsDendro = FALSE,
-minClusterSize = minModuleSize)
-table<-as.data.frame(table(dynamicMods)) #list modules and respective sizes
-table(dynamicMods)
-save(dynamicMods, geneTree, file = "Mcap2020/Output/TagSeq/GenomeV3/dyMod_geneTree.RData") #Save to load into RStudio
-```
-Module 0 is reserved for unassigned genes. The are other modules will be listed largest to smallest. 
+                            deepSplit = TRUE, pamRespectsDendro = FALSE,
+                            minClusterSize = minModuleSize)
 
-From Genome V1: 
-   1    2    3    4    5    6    7    8    9   10   11   12   13   14   15   16   17   18   19 
-3954 3662 2934  955  913  765  679  602  591  284   85   74   71   54   51   36   34   29   24 
+# Display and save the results
+print(table(dynamicMods))
+save(dynamicMods, geneTree, file = "~/github/oyster-lnc/data/dyMod_geneTree.RData")
 
-From Genome V3: 
-dynamicMods
-   1    2    3    4    5    6    7    8    9   10   11   12 
-3536 3073 2352  737  622  603  299   56   54   52   52   39 
 
-Load modules calculated from the adjacency matrix.  
-```{r}
-dyMod_geneTree <- load(file = "Mcap2020/Output/TagSeq/GenomeV3/dyMod_geneTree.RData")
-dyMod_geneTree
-```
+# Load modules calculated from the adjacency matrix
+load(file = "~/github/oyster-lnc/data/dyMod_geneTree.RData")
 
-Plot the module assignment under the gene dendrogram
-```{r}
-#dynamicColors = labels2colors(dynamicMods) # Convert numeric labels into colors
-dynamicColors=dynamicMods
-table(dynamicColors)
-
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/dissTOMColorClustering.pdf", width=20, height=20)
-plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut", dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05, main = "Gene dendrogram and module colors")
-dev.off()
+# Plot the module assignment under the gene dendrogram
+dynamicColors = labels2colors(dynamicMods)
+plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut",
+                    dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05,
+                    main = "Gene dendrogram and module colors")
 ```
 
 ### Merge modules with similar expression profiles  
@@ -563,9 +317,8 @@ MEDiss = 1-cor(MEs)
 #Cluster again and plot the results
 METree = flashClust(as.dist(MEDiss), method = "average")
 
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/eigengeneClustering1.pdf", width = 20)
+# pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/eigengeneClustering1.pdf", width = 20)
 plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
-dev.off()
 ```
 
 **Merge modules with >85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
