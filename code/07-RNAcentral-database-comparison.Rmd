@@ -197,5 +197,44 @@ grep -c '^>' ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C
 
 ```
 
+Re-run BLASTn for top 2 search results and -20 e-value...
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/RNAcentral-blastdb/rnacentral-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v3.tab \
+-evalue 1E-20 \
+-num_threads 20 \
+-max_target_seqs 500 \
+-outfmt 6
+```
+
+```{bash}
+/home/shared/8TB_HDD_02/zbengt/Applications/bioinfo/ncbi-blast-2.13.0+/bin/blastn \
+-query ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+-db ~/github/oyster-lnc/data/databases/RNAcentral-blastdb/rnacentral-blastdb \
+-out ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v4.tab \
+-evalue 1E-20 \
+-num_threads 20 \
+-max_target_seqs 500
+```
+
+Sort by e-value to choose the top 2 hits for each unique ID...
+```{bash}
+sort -k1,1 -k11,11g ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v3.tab > ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v3-sorted.tab
+
+```
+-k1,1 sorts by the first column (query ID) and -k11,11g sorts by the 11th column (e-value) in general numeric order (lowest e-value first, which signifies higher similarity)
+
+Now create a new table that only includes the top 2 hits for each ID...
+```{bash}
+awk 'BEGIN {FS=OFS="\t"} $1 != prev_query || NR == 1 {print; count=1; prev_query=$1} count == 1 && $1 == prev_query {print; count++}' ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v3-sorted.tab > ~/github/oyster-lnc/output/database_blasts/RNAcentral/rnacentral-v3-top2hits.tab
+
+```
+
+
+```{bash}
+head /home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/data/databases/rnacentral_active.fasta
+```
 
 
