@@ -131,13 +131,11 @@ Conduct data filtering, this includes:
 *pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.
 
 ```{r}
-filtF <- filterfun(pOverA(1,5))
+filtF <- filterfun(pOverA(0.062,5))
+#filtF <- filterfun(pOverA(1,5)) #used to be this
 
 #create filter for the counts data
 gfiltF <- genefilter(gcountF, filtF)
-
-#identify genes to keep by count filter
-gkeepF <- gcountF[gfiltF,]
 
 #identify genes to keep by count filter
 gkeepF <- gcountF[gfiltF,]
@@ -153,7 +151,7 @@ nrow(gcountF) #Before
 nrow(gcount_filtF) #After
 ```
 
-Filtered from 4552 to 2412 assuming 1 out of all individuals expressing at least 5 counts is an appropriate metric.
+Filtered from 4552 to 4391 assuming 1 out of all individuals expressing at least 5 counts is an appropriate metric. *Can return to this to set a higher threshold (e.g., only lncRNA's present in 30% of samples)*
 
 ```{r}
 head(gcount_filtF)
@@ -172,18 +170,18 @@ all(rownames(metadataF$sample) == colnames(gcount_filtF))
 Display current order of metadata and gene count matrix.
 
 ```{r}
-# samples$sample
-# colnames(gcount_filtF)
+metadata_orderedF$sample
+colnames(gcount_filtF)
 ```
 
 Order metadata the same as the column order in the gene matrix.
 
 ```{r}
-# Filter out male samples using subset
-metadata_orderedF <- subset(samples, sex != "male")
-
-
-head(metadata_orderedF)
+# # Filter out male samples using subset
+# metadata_orderedF <- subset(samples, sex != "male")
+# 
+# 
+# head(metadata_orderedF)
 ```
 
 # **Construct DESeq2 data set**
@@ -247,7 +245,7 @@ pht<-pheatmap(gsampleDistMatrix, #plot matrix
 Plot a PCA of samples by lifestages
 
 ```{r}
-gPCAdata <- plotPCA(gvst, intgroup = c("treatment"), returnData=TRUE, ntop=2412) #use ntop to specify all genes
+gPCAdata <- plotPCA(gvst, intgroup = c("treatment"), returnData=TRUE, ntop=4391) #use ntop to specify all genes
 
 percentVar <- round(100*attr(gPCAdata, "percentVar")) #plot PCA of samples with all data
 
@@ -355,7 +353,7 @@ Power of 7
 
 ```{r}
 # Load the data saved
-load(file="~/github/oyster-lnc/data/datExpr.RData")
+#load(file="~/github/oyster-lnc/data/datExpr.RData")
 ```
 
 ```{r}
@@ -377,8 +375,8 @@ save(dissTOM, file = "~/github/oyster-lnc/data/dissTOM.RData")
 ### Clustering using TOM
 
 ```{r}
-# dim(dissTOM)
-# str(geneTree)  # Structure of the dendrogram object
+dim(dissTOM)
+str(geneTree)  # Structure of the dendrogram object
 
 ```
 
@@ -437,7 +435,7 @@ METree = flashClust(as.dist(MEDiss), method = "average")
 **Merge modules with \>85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
 
 ```{r}
-MEDissThres= 0.15 #merge modules that are 85% similar
+MEDissThres= 0.20 #merge modules that are 85% similar
 
 # plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
 # abline(h=MEDissThres, col="red")
@@ -609,13 +607,13 @@ library(dendsort)
 row_dend = dendsort(hclust(dist(moduleTraitCor)))
 col_dend = dendsort(hclust(dist(t(moduleTraitCor))))
 
-pdf(file = "~/github/oyster-lnc/output/heatmap.pdf", height = 25, width = 10)
+pdf(file = "~/github/oyster-lnc/output/heatmap.pdf", height = 40, width = 10)
 Heatmap(moduleTraitCor, name = "Eigengene", row_title = "Gene Module", column_title = "Module-Treatment Eigengene Correlation", 
         col = blueWhiteRed(50), 
         row_names_side = "left", 
         #row_dend_side = "left",
         width = unit(5, "in"), 
-        height = unit(15, "in"), 
+        height = unit(30, "in"), 
         #column_dend_reorder = TRUE, 
         #cluster_columns = col_dend,
         row_dend_reorder = TRUE,
@@ -665,24 +663,13 @@ Plot mean module eigengene for each module.
 ```{r, echo=true}
 #convert wide format to long format for plotting  
 plot_MEs<-Strader_MEs%>%
-  gather(., key="Module", value="Mean", MEtan:MEyellow3)
+  gather(., key="Module", value="Mean", 1:238)
 
 write_csv(plot_MEs, "~/github/oyster-lnc/output/plotMEs")
+```
 
-#dev.off() 
+```{r}
 
-#time_point_order = c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)") #Set time_point order
-
-#add group to dataframe for scale colour manual 
-#plot_MEs<-plot_MEs%>%
-  # mutate(group=if_else(grepl("Egg", lifestage), "Fertilized Egg", as.character(lifestage)))%>%
-  # mutate(group=if_else(grepl("Embryo", lifestage), "Embryo", as.character(group)))%>%
-  # mutate(group=if_else(grepl("Larvae", lifestage), "Larvae", as.character(group)))%>%
-  # mutate(group=if_else(grepl("Polyp", lifestage), "Metamorphosed Polyp", as.character(group)))%>%
-  # mutate(group=if_else(grepl("Recruit", lifestage), "Attached Recruit", as.character(group)))
-
-# list_groups<-c("Fertilized Egg", "Embryo", "Larvae", "Metamorphosed Polyp", "Attached Recruit")
-# plot_MEs$group<-factor(as.character(plot_MEs$group), levels=list_groups)
 
 expression_plots<-plot_MEs%>%
   group_by(Module, sample) %>%
@@ -690,10 +677,7 @@ expression_plots<-plot_MEs%>%
   facet_wrap(~ Module)+
   geom_jitter(alpha = 0.5) +
   geom_boxplot(alpha=0) +
-  #scale_x_discrete(name="", limits=time_point_order) +
-  #ylim(-0.5,1) +
   ylab("Mean Module Eigenegene") +
-  #scale_colour_manual(name="Lifestage", values = c("Fertilized Egg"="#8C510A", "Embryo"="#DFC27D", "Larvae"="#80CDC1", "Metamorphosed Polyp"="#003C30", "Attached Recruit"="#BA55D3")) +
   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
   theme_bw() + 
   theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
