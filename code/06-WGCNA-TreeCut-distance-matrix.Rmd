@@ -5,10 +5,9 @@ date: "2023-08-22"
 output: html_document
 ---
 
-From Ariana's original code here:
-https://github.com/AHuffmyer/EarlyLifeHistory_Energetics/blob/master/Mcap2020/Scripts/TagSeq/Genome_V3/1_WGCNA_Mcap_V3.Rmd
+From Ariana's original code here: <https://github.com/AHuffmyer/EarlyLifeHistory_Energetics/blob/master/Mcap2020/Scripts/TagSeq/Genome_V3/1_WGCNA_Mcap_V3.Rmd>
 
-WGCNA analysis of TagSeq dataset for Montipora capitata developmental time series (2020) using V3 of the M. capitata genome. 
+WGCNA analysis of TagSeq dataset for Montipora capitata developmental time series (2020) using V3 of the M. capitata genome.
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -19,7 +18,7 @@ knitr::opts_chunk$set(echo = TRUE)
 options(stringsAsFactors = FALSE) #Set Strings to character
 ```
 
-Load required libraries.  
+Load required libraries.
 
 ```{r}
 if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
@@ -87,8 +86,8 @@ str(counts)
 
 # Female
 
-## **Data input and filtering**  
- 
+## **Data input and filtering**
+
 Subset data by sex, for females in this case.
 
 ```{r}
@@ -97,8 +96,14 @@ metadataF <- samples[samples$sex == "female", ]
 head(metadataF)
 
 #load counts but only for female samples
-countsF <- counts[, female_samples$sample]
+# Assuming female_counts contains a column named sample_id
+#load counts but only for female samples
+countsF <- counts[, metadataF$sample]
 head(countsF)
+
+
+# countsF <- subset(counts, sex == "female")
+# head(countsF)
 ```
 
 ```{r}
@@ -118,14 +123,15 @@ gcountF<-gcountF %>%
     dplyr::select(!Total)
 nrow(gcountF)
 ```
-We had 4750 lncRNAs, which was filtered down to 4552 by removing genes with row sums of 0 (those not detected in our sequences).  
 
-Conduct data filtering, this includes:  
+We had 4750 lncRNAs, which was filtered down to 4552 by removing genes with row sums of 0 (those not detected in our sequences).
 
-*pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.  
+Conduct data filtering, this includes:
+
+*pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.
 
 ```{r}
-filtF <- filterfun(pOverA(0.5,0))
+filtF <- filterfun(pOverA(1,5))
 
 #create filter for the counts data
 gfiltF <- genefilter(gcountF, filtF)
@@ -147,12 +153,13 @@ nrow(gcountF) #Before
 nrow(gcount_filtF) #After
 ```
 
+Filtered from 4552 to 2412 assuming 1 out of all individuals expressing at least 5 counts is an appropriate metric.
+
 ```{r}
 head(gcount_filtF)
 ```
 
-
-Before filtering, we had 4552 genes. After filtering for pOverA, we have approximately 4190 genes. 
+Before filtering, we had 4552 genes. After filtering for pOverA, we have approximately 2412 genes.
 
 In order for the DESeq2 algorithms to work, the SampleIDs on the metadta file and count matrices have to match exactly and in the same order. The following R clump will check to make sure that these match. Should return TRUE.
 
@@ -162,24 +169,123 @@ all(rownames(metadataF$sample) %in% colnames(gcount_filtF))
 all(rownames(metadataF$sample) == colnames(gcount_filtF)) 
 ```
 
+Display current order of metadata and gene count matrix.
 
-# **WGCNA analysis using Dynamic Tree Cut**  
+```{r}
+# samples$sample
+# colnames(gcount_filtF)
+```
 
-Data are analyzed using dynamic tree cut approach, our data set is not large enough to have to use blockwiseModules to break data into "blocks". This code uses step by step network analysis and module detection based on scripts from https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/index.html. 
+Order metadata the same as the column order in the gene matrix.
+
+```{r}
+# Filter out male samples using subset
+metadata_orderedF <- subset(samples, sex != "male")
+
+
+head(metadata_orderedF)
+```
+
+# **Construct DESeq2 data set**
+
+Create a DESeqDataSet design from gene count matrix and labels. Here we set the design to look at lifestage to test for any differences in gene expression across timepoints.
+
+```{r}
+#Set DESeq2 design
+gdds <- DESeqDataSetFromMatrix(countData = gcount_filtF,
+                              colData = metadata_orderedF,
+                              design = ~treatment)
+```
+
+First we are going to log-transform the data using a variance stabilizing transforamtion (VST). This is only for visualization purposes. Essentially, this is roughly similar to putting the data on the log2 scale. It will deal with the sampling variability of low counts by calculating within-group variability (if blind=FALSE). Importantly, it does not use the design to remove variation in the data, and so can be used to examine if there may be any variability do to technical factors such as extraction batch effects.
+
+To do this we first need to calculate the size factors of our samples. This is a rough estimate of how many reads each sample contains compared to the others. In order to use VST (the faster log2 transforming process) to log-transform our data, the size factors need to be less than 4.
+
+Chunk should return TRUE if \<4.
+
+```{r}
+SF.gdds <- estimateSizeFactors(gdds) #estimate size factors to determine if we can use vst  to transform our data. Size factors should be less than 4 for us to use vst
+print(sizeFactors(SF.gdds)) #View size factors
+
+all(sizeFactors(SF.gdds)) < 4
+```
+
+All size factors are less than 4, so we can use VST transformation.
+
+```{r}
+gvst <- vst(gdds, blind=FALSE) #apply a variance stabilizing transformation to minimize effects of small counts and normalize wrt library size
+head(assay(gvst), 3) #view transformed gene count data for the first three genes in the dataset.  
+```
+
+# **Examine PCA and sample distances**
+
+Plot a heatmap to sample to sample distances
+
+```{r}
+gsampleDists <- dist(t(assay(gvst))) #calculate distance matix
+gsampleDistMatrix <- as.matrix(gsampleDists) #distance matrix
+rownames(gsampleDistMatrix) <- colnames(gvst) #assign row names
+colnames(gsampleDistMatrix) <- NULL #assign col names
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255) #assign colors
+
+save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+pht<-pheatmap(gsampleDistMatrix, #plot matrix
+         clustering_distance_rows=gsampleDists, #cluster rows
+         clustering_distance_cols=gsampleDists, #cluster columns
+         col=colors) #set colors
+
+```
+
+Plot a PCA of samples by lifestages
+
+```{r}
+gPCAdata <- plotPCA(gvst, intgroup = c("treatment"), returnData=TRUE, ntop=2412) #use ntop to specify all genes
+
+percentVar <- round(100*attr(gPCAdata, "percentVar")) #plot PCA of samples with all data
+
+allgenesfilt_PCA <- ggplot(gPCAdata, aes(PC1, PC2, shape=treatment)) + 
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  coord_fixed()+
+  theme_bw() + #Set background color
+  theme(panel.border = element_blank(), # Set border
+                     #panel.grid.major = element_blank(), #Set major gridlines 
+                     #panel.grid.minor = element_blank(), #Set minor gridlines
+                     axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank()) # + #Set the plot background
+  #theme(legend.position = ("none")) #set title attributes
+allgenesfilt_PCA
+#ggsave("Mcap2020/Figures/TagSeq/GenomeV3/allgenesfilt-PCA.pdf", allgenesfilt_PCA, width=11, height=8)
+```
+
+# **WGCNA analysis using Dynamic Tree Cut**
+
+Data are analyzed using dynamic tree cut approach, our data set is not large enough to have to use blockwiseModules to break data into "blocks". This code uses step by step network analysis and module detection based on scripts from <https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/index.html>.
 
 Transpose the filtered gene count matrix so that the gene IDs are rows and the sample IDs are columns.
+
 ```{r}
-datExpr <- gcount_filtF
-print(datExpr)
+datExpr <- as.data.frame(t(assay(gvst))) #transpose to output to a new data frame with the column names as row names. And make all data numeric
 ```
 
 Check for genes and samples with too many missing values with goodSamplesGenes. There shouldn't be any because we performed pre-filtering
+
 ```{r}
 gsg = goodSamplesGenes(datExpr, verbose = 3)
 gsg$allOK #Should return TRUE if not, the R chunk below will take care of flagged data
 ```
 
-Remove flagged samples if the allOK is FALSE, not used here.  
+Remove flagged samples if the allOK is FALSE, not used here.
+
 ```{r}
 #ncol(datExpr) #number genes before
 #if (!gsg$allOK) #If the allOK is FALSE...
@@ -195,15 +301,21 @@ Remove flagged samples if the allOK is FALSE, not used here.
 #ncol(datExpr) #number genes after
 ```
 
-There don't look to be any outliers, so we will move on with business as usual. 
+Look for outliers by examining tree of samples
 
 ```{r}
-save(datExpr, file = "~/github/oyster-lnc/data/datExpr.RData")
+# sampleTree = hclust(dist(datExpr), method = "average");
+# # Plot the sample tree: Open a graphic output window of size 12 by 9 inches
+# # The user should change the dimensions if the window is too large or too small.
+# plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+# dev.off()
 ```
 
-## Network construction and consensus module detection  
+There don't look to be any outliers, so we will move on with business as usual.
 
-### Choosing a soft-thresholding power: Analysis of network topology β  
+## Network construction and consensus module detection
+
+### Choosing a soft-thresholding power: Analysis of network topology β
 
 The soft thresholding power (β) is the number to which the co-expression similarity is raised to calculate adjacency. The function pickSoftThreshold performs a network topology analysis. The user chooses a set of candidate powers, however the default parameters are suitable values.
 
@@ -216,7 +328,8 @@ powers <- c(seq(from = 1, to=19, by=2), c(21:30)) #Create a string of numbers fr
 sft <-pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
 ```
 
-Plot the results.  
+Plot the results.
+
 ```{r}
 sizeGrWindow(9, 5)
 par(mfrow = c(1,2));
@@ -236,9 +349,9 @@ plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
  text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
 ```
 
-Power of 3 from previous use of pickSoftThreshold.
+Power of 7
 
-### Co-expression adjacency and topological overlap matrix similarity  
+### Co-expression adjacency and topological overlap matrix similarity
 
 ```{r}
 # Load the data saved
@@ -251,7 +364,7 @@ options(stringsAsFactors = FALSE)
 enableWGCNAThreads() 
 
 # Run analysis
-softPower = 3
+softPower = 7
 adjacency = adjacency(datExpr, power = softPower, type = "signed")
 TOM = TOMsimilarity(adjacency, TOMType = "signed")
 dissTOM = 1 - TOM
@@ -264,11 +377,10 @@ save(dissTOM, file = "~/github/oyster-lnc/data/dissTOM.RData")
 ### Clustering using TOM
 
 ```{r}
-dim(dissTOM)
-str(geneTree)  # Structure of the dendrogram object
+# dim(dissTOM)
+# str(geneTree)  # Structure of the dendrogram object
 
 ```
-
 
 ```{r}
 # Load in dissTOM file
@@ -279,13 +391,13 @@ geneTree <- flashClust(as.dist(dissTOM), method="average")
 plot(geneTree, xlab="", sub="", main= "Gene Clustering on TOM-based dissimilarity",hang=0.04)
 ```
 
-### Module identification using dynamicTreeCut  
+### Module identification using dynamicTreeCut
 
 ```{r}
 # Define minimum module size and identify modules
-minModuleSize = 10
+minModuleSize = 5
 dynamicMods = cutreeDynamic(dendro = geneTree, distM = dissTOM,
-                            deepSplit = TRUE, pamRespectsDendro = FALSE,
+                            deepSplit = 4, pamRespectsDendro = FALSE,
                             minClusterSize = minModuleSize)
 
 # Display and save the results
@@ -303,12 +415,13 @@ plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut",
                     main = "Gene dendrogram and module colors")
 ```
 
-### Merge modules with similar expression profiles  
+### Merge modules with similar expression profiles
 
-Plot module similarity based on eigengene value 
+Plot module similarity based on eigengene value
+
 ```{r}
 #Calculate eigengenes
-MEList = moduleEigengenes(datExpr, colors = dynamicColors, softPower = 5)
+MEList = moduleEigengenes(datExpr, colors = dynamicColors, softPower = 7)
 MEs = MEList$eigengenes
 
 #Calculate dissimilarity of module eigengenes
@@ -318,31 +431,28 @@ MEDiss = 1-cor(MEs)
 METree = flashClust(as.dist(MEDiss), method = "average")
 
 # pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/eigengeneClustering1.pdf", width = 20)
-plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+# plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
 ```
 
-**Merge modules with >85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
+**Merge modules with \>85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
+
 ```{r}
 MEDissThres= 0.15 #merge modules that are 85% similar
 
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/eigengeneClustering2.pdf", width = 20)
-plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
-abline(h=MEDissThres, col="red")
-dev.off()
+# plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+# abline(h=MEDissThres, col="red")
+# dev.off()
 
 merge= mergeCloseModules(datExpr, dynamicColors, cutHeight= MEDissThres, verbose =3)
 
 mergedColors= merge$colors
 mergedMEs= merge$newMEs
 
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/mergedClusters.pdf", width=20, height=20)
 plotDendroAndColors(geneTree, cbind(dynamicColors, mergedColors), c("Dynamic Tree Cut", "Merged dynamic"), dendroLabels= FALSE, hang=0.03, addGuide= TRUE, guideHang=0.05)
-dev.off()
 ```
 
-We had 12 modules before merging.  
-
 Save new colors
+
 ```{r}
 moduleLabels=mergedColors
 moduleColors = mergedColors # Rename to moduleColors
@@ -352,53 +462,45 @@ MEs = mergedMEs;
 ncol(MEs) #How many modules do we have now?
 ```
 
-We have 9 modules after merging with 85% similarity.   
+Plot new tree with modules.
 
-Plot new tree with 9 modules.  
 ```{r}
 #Calculate dissimilarity of module eigengenes
 MEDiss = 1-cor(MEs)
 #Cluster again and plot the results
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/eigengeneClustering3.pdf")
 METree = flashClust(as.dist(MEDiss), method = "average")
-MEtreePlot = plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
-dev.off()
+# MEtreePlot = plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
 ```
 
-Display table of module gene counts.  
+Display table of module gene counts.
 
 ```{r}
 table(mergedColors)
 table<-as.data.frame(table(mergedColors))
-write_csv(table, "Mcap2020/Output/TagSeq/GenomeV3/genes_per_module.csv")
+write_csv(table, "~/github/oyster-lnc/output/genes_per_module.csv")
 ```
 
-We have 9 modules.   
+## Relating modules to developmental stage
 
-mergedColors
-   1    2    3    5    6    7    8    9   12 
-3536 3073 3089  674  603  299  108   54   39  
+### Quantifying module--trait associations
 
-##  Relating modules to developmental stage
+Prepare trait data. Data has to be numeric, so I will substitute time_points and type for numeric values. The "trait" we are considering here is ontogeny.
 
-### Quantifying module–trait associations
+Make a dataframe that has a column for each lifestage name and a row for samples. Populate a 1 for samples that match each lifestage and a 0 for samples not matching respective lifestages.
 
-Prepare trait data. Data has to be numeric, so I will substitute time_points and type for numeric values. The "trait" we are considering here is ontogeny.  
+This process changes lifestages from a categorical variable into a binary variable. This will allow for correlations between mean eigengenes and lifestage.
 
-Make a dataframe that has a column for each lifestage name and a row for samples. Populate a 1 for samples that match each lifestage and a 0 for samples not matching respective lifestages. 
-
-This process changes lifestages from a categorical variable into a binary variable. This will allow for correlations between mean eigengenes and lifestage.  
- 
 ```{r}
-metadata_ordered$num <- c("1")
-allTraits <- as.data.frame(pivot_wider(metadata_ordered, names_from = lifestage, values_from = num, id_cols = sample_id))
+metadata_orderedF$num <- c("1")
+allTraits <- as.data.frame(pivot_wider(metadata_orderedF, names_from = treatment, values_from = num, id_cols = sample))
 allTraits[is.na(allTraits)] <- c("0")
-rownames(allTraits) <- allTraits$sample_id
+rownames(allTraits) <- allTraits$sample
 datTraits <- allTraits[,c(-1)]
 datTraits
 ```
 
-Define numbers of genes and samples and print.  
+Define numbers of genes and samples and print.
+
 ```{r}
 nGenes = ncol(datExpr)
 nSamples = nrow(datExpr)
@@ -407,45 +509,78 @@ nGenes
 nSamples
 ```
 
-We have 11,475 genes and 38 samples.  
+We have 2412 genes and 16 samples.
 
-Generate labels for module eigengenes as numbers.  
+Generate labels for module eigengenes as numbers.
+
 ```{r}
-MEs0 = moduleEigengenes(datExpr, moduleLabels, softPower=5)$eigengenes
+MEs0 = moduleEigengenes(datExpr, moduleLabels, softPower=7)$eigengenes
 MEs = orderMEs(MEs0)
 names(MEs)
 ```
-Our module names are:  
 
-"ME2"  "ME6"  "ME3"  "ME9"  "ME5"  "ME12" "ME1"  "ME7"  "ME8" 
+Our module names are:
+
+Like a lot
+
+```{r}
+# Check the class of MEs
+class(MEs)
+
+# Check the class of datTraits
+class(datTraits)
+
+```
+
+```{r}
+# Check the first few rows of MEs
+head(MEs)
+
+# Check the first few rows of datTraits
+head(datTraits)
+
+```
 
 Correlations of traits with eigengenes
+
 ```{r}
 moduleTraitCor = cor(MEs, datTraits, use = "p");
 moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples);
 Colors=sub("ME","", names(MEs))
 
+# pdf(file="~/github/oyster-lnc/output/hclust.pdf")
 moduleTraitTree = hclust(dist(t(moduleTraitCor)), method = "average")
-
-pdf(file="Mcap2020/Figures/TagSeq/GenomeV3/ModuleTraitClusterTree.pdf")
-plot(moduleTraitTree)
-dev.off()
+# plot(moduleTraitTree)
 ```
 
-Correlations of genes with eigengenes. Calculate correlations between ME's and lifestages. 
+```{r}
+# Check the dimensions of the moduleTraitCor matrix
+corDimensions <- dim(moduleTraitCor)
+
+# Check if it's a square matrix
+if (corDimensions[1] == corDimensions[2]) {
+  cat("moduleTraitCor is a square matrix with dimensions:", corDimensions[1], "x", corDimensions[2], "\n")
+} else {
+  cat("moduleTraitCor is not a square matrix. Dimensions:", corDimensions[1], "x", corDimensions[2], "\n")
+}
+
+```
+
+Correlations of genes with eigengenes. Calculate correlations between ME's and lifestages.
+
 ```{r}
 moduleGeneCor=cor(MEs,datExpr)
 moduleGenePvalue = corPvalueStudent(moduleGeneCor, nSamples);
 ```
 
-Calculate kME values (module membership). 
+Calculate kME values (module membership).
 
 ```{r}
 datKME = signedKME(datExpr, MEs, outputColumnName = "kME")
 head(datKME)
 ```
 
-Save module colors and labels for use in subsequent analyses.  
+Save module colors and labels for use in subsequent analyses.
 
 ```{r}
 #save(MEs, moduleLabels, moduleColors, geneTree, file="Mcap2020/Output/TagSeq/NetworkConstruction-stepByStep.RData") 
@@ -453,7 +588,7 @@ Save module colors and labels for use in subsequent analyses.
 
 ### Plot module-trait associations
 
-Generate a complex heatmap of module-trait relationships.  
+Generate a complex heatmap of module-trait relationships.
 
 ```{r}
 #bold sig p-values
@@ -468,26 +603,26 @@ heatmappval <- signif(moduleTraitPvalue, 1)
 htmap.colors <- names(MEs)
 htmap.colors <- gsub("ME", "", htmap.colors)
 
-lifestage_order<-c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)")
+# lifestage_order<-c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)")
 
 library(dendsort)
 row_dend = dendsort(hclust(dist(moduleTraitCor)))
 col_dend = dendsort(hclust(dist(t(moduleTraitCor))))
 
-pdf(file = "Mcap2020/Figures/TagSeq/GenomeV3/Module-trait-relationship-heatmap.pdf", height = 8, width = 8)
-Heatmap(moduleTraitCor, name = "Eigengene", row_title = "Gene Module", column_title = "Module-Lifestage Eigengene Correlation", 
+pdf(file = "~/github/oyster-lnc/output/heatmap.pdf", height = 25, width = 10)
+Heatmap(moduleTraitCor, name = "Eigengene", row_title = "Gene Module", column_title = "Module-Treatment Eigengene Correlation", 
         col = blueWhiteRed(50), 
         row_names_side = "left", 
         #row_dend_side = "left",
         width = unit(5, "in"), 
-        height = unit(4.5, "in"), 
+        height = unit(15, "in"), 
         #column_dend_reorder = TRUE, 
         #cluster_columns = col_dend,
         row_dend_reorder = TRUE,
         #column_split = 6,
         row_split=3,
         #column_dend_height = unit(.5, "in"),
-        column_order = lifestage_order, 
+        # column_order = lifestage_order, 
         cluster_rows = row_dend, 
         row_gap = unit(2.5, "mm"), 
         border = TRUE,
@@ -506,15 +641,16 @@ dev.off()
 
 ```
 
-# **Plot mean eigengene over developmental stages**  
+# **Plot mean eigengene over developmental stages**
 
-View module eigengene data and make dataframe for Strader plots.  
+View module eigengene data and make dataframe for Strader plots.
+
 ```{r}
 head(MEs)
 names(MEs)
 Strader_MEs <- MEs
-Strader_MEs$lifestage <- metadata_ordered$lifestage
-Strader_MEs$sample_id <- rownames(Strader_MEs)
+Strader_MEs$sample <- metadata_orderedF$sample
+Strader_MEs$sample <- rownames(Strader_MEs)
 head(Strader_MEs)
 
 Strader_MEs<-Strader_MEs%>%
@@ -524,41 +660,40 @@ dim(Strader_MEs)
 head(Strader_MEs)
 ```
 
-Plot mean module eigengene for each module.  
+Plot mean module eigengene for each module.
 
-```{r}
+```{r, echo=true}
 #convert wide format to long format for plotting  
 plot_MEs<-Strader_MEs%>%
-  gather(., key="Module", value="Mean", ME2:ME8)
+  gather(., key="Module", value="Mean", MEtan:MEyellow3)
 
-write_csv(plot_MEs, "Mcap2020/Output/TagSeq/GenomeV3/WGCNA_eigengene_expression.csv")
+write_csv(plot_MEs, "~/github/oyster-lnc/output/plotMEs")
 
-plot_MEs<- read_csv("Mcap2020/Output/TagSeq/GenomeV3/WGCNA_eigengene_expression.csv")
 #dev.off() 
 
-time_point_order = c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)") #Set time_point order
+#time_point_order = c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)") #Set time_point order
 
 #add group to dataframe for scale colour manual 
-plot_MEs<-plot_MEs%>%
-  mutate(group=if_else(grepl("Egg", lifestage), "Fertilized Egg", as.character(lifestage)))%>%
-  mutate(group=if_else(grepl("Embryo", lifestage), "Embryo", as.character(group)))%>%
-  mutate(group=if_else(grepl("Larvae", lifestage), "Larvae", as.character(group)))%>%
-  mutate(group=if_else(grepl("Polyp", lifestage), "Metamorphosed Polyp", as.character(group)))%>%
-  mutate(group=if_else(grepl("Recruit", lifestage), "Attached Recruit", as.character(group)))
+#plot_MEs<-plot_MEs%>%
+  # mutate(group=if_else(grepl("Egg", lifestage), "Fertilized Egg", as.character(lifestage)))%>%
+  # mutate(group=if_else(grepl("Embryo", lifestage), "Embryo", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Larvae", lifestage), "Larvae", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Polyp", lifestage), "Metamorphosed Polyp", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Recruit", lifestage), "Attached Recruit", as.character(group)))
 
-list_groups<-c("Fertilized Egg", "Embryo", "Larvae", "Metamorphosed Polyp", "Attached Recruit")
-plot_MEs$group<-factor(as.character(plot_MEs$group), levels=list_groups)
+# list_groups<-c("Fertilized Egg", "Embryo", "Larvae", "Metamorphosed Polyp", "Attached Recruit")
+# plot_MEs$group<-factor(as.character(plot_MEs$group), levels=list_groups)
 
 expression_plots<-plot_MEs%>%
-  group_by(Module, lifestage) %>%
-  ggplot(aes(x=lifestage, y=Mean, group=lifestage, colour=group)) +
+  group_by(Module, sample) %>%
+  ggplot(aes(x=sample, y=Mean, group=sample, colour=sample)) +
   facet_wrap(~ Module)+
   geom_jitter(alpha = 0.5) +
   geom_boxplot(alpha=0) +
-  scale_x_discrete(name="", limits=time_point_order) +
+  #scale_x_discrete(name="", limits=time_point_order) +
   #ylim(-0.5,1) +
   ylab("Mean Module Eigenegene") +
-  scale_colour_manual(name="Lifestage", values = c("Fertilized Egg"="#8C510A", "Embryo"="#DFC27D", "Larvae"="#80CDC1", "Metamorphosed Polyp"="#003C30", "Attached Recruit"="#BA55D3")) +
+  #scale_colour_manual(name="Lifestage", values = c("Fertilized Egg"="#8C510A", "Embryo"="#DFC27D", "Larvae"="#80CDC1", "Metamorphosed Polyp"="#003C30", "Attached Recruit"="#BA55D3")) +
   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
   theme_bw() + 
   theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
@@ -573,14 +708,65 @@ expression_plots<-plot_MEs%>%
         plot.background=element_blank(),
         plot.title = element_text(size=22)); expression_plots
 
-ggsave(expression_plots, file="Mcap2020/Figures/TagSeq/GenomeV3/expression_eigengene.jpeg", height=8, width=10)
+ggsave(expression_plots, file="~/github/oyster-lnc/output/expression_eigengene.jpeg", height=8, width=10)
+
 ```
 
-# **Calculating gene significance and module membership**  
+```{r, echo = TRUE}
+#convert wide format to long format for plotting  
+plot_MEs<-Strader_MEs%>%
+  gather(., key="Module", value="Mean", MEtan:MEyellow3)
 
-We quantify associations of individual genes with life stage by defining Gene Significance GS as the absolute value of the correlation between the gene and the lifestage timepoint. For each module, we also define a quantitative measure of module membership (MM) as the correlation of the module eigengene and the gene expression profile.  
+write_csv(plot_MEs, "~/github/oyster-lnc/output/plotMEs-treatment")
 
-Define lifestage as a numeric value (ranging from 1 (egg, first timepoint)-10 (recruit, last time point)).  
+#dev.off() 
+
+#time_point_order = c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)") #Set time_point order
+
+#add group to dataframe for scale colour manual 
+#plot_MEs<-plot_MEs%>%
+  # mutate(group=if_else(grepl("Egg", lifestage), "Fertilized Egg", as.character(lifestage)))%>%
+  # mutate(group=if_else(grepl("Embryo", lifestage), "Embryo", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Larvae", lifestage), "Larvae", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Polyp", lifestage), "Metamorphosed Polyp", as.character(group)))%>%
+  # mutate(group=if_else(grepl("Recruit", lifestage), "Attached Recruit", as.character(group)))
+
+# list_groups<-c("Fertilized Egg", "Embryo", "Larvae", "Metamorphosed Polyp", "Attached Recruit")
+# plot_MEs$group<-factor(as.character(plot_MEs$group), levels=list_groups)
+
+expression_plots<-plot_MEs%>%
+  group_by(Module, treatment) %>%
+  ggplot(aes(x=sample, y=Mean, group=treatment, colour=treatment)) +
+  facet_wrap(~ Module)+
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(alpha=0) +
+  #scale_x_discrete(name="", limits=time_point_order) +
+  #ylim(-0.5,1) +
+  ylab("Mean Module Eigenegene") +
+  #scale_colour_manual(name="Lifestage", values = c("Fertilized Egg"="#8C510A", "Embryo"="#DFC27D", "Larvae"="#80CDC1", "Metamorphosed Polyp"="#003C30", "Attached Recruit"="#BA55D3")) +
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+  theme_bw() + 
+  theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+        axis.title.x=element_text(size = 14), #set x-axis title size
+        axis.ticks.x=element_blank(), #No x-label ticks
+        #axis.title.y=element_blank(), #No y-axis title
+        axis.text.y=element_text(size = 14), #set y-axis label size, 
+        panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+        panel.grid.major = element_blank(), #Set major gridlines
+        panel.grid.minor = element_blank(), #Set minor gridlines
+        axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank(),
+        plot.title = element_text(size=22)); expression_plots
+
+ggsave(expression_plots, file="~/github/oyster-lnc/output/treatment_expression_eigengene.jpeg", height=8, width=10)
+```
+
+# **Calculating gene significance and module membership**
+
+We quantify associations of individual genes with life stage by defining Gene Significance GS as the absolute value of the correlation between the gene and the lifestage timepoint. For each module, we also define a quantitative measure of module membership (MM) as the correlation of the module eigengene and the gene expression profile.
+
+Define lifestage as a numeric value (ranging from 1 (egg, first timepoint)-10 (recruit, last time point)).
+
 ```{r}
 expressionProfile_data <- Strader_MEs
 
@@ -609,9 +795,9 @@ time_stage$lifestage_num<-as.numeric(time_stage$lifestage_num)
 dim(time_stage)
 ```
 
-Generate data frame for module membership for each gene (absolute value of correlation between module eigengene and gene).  
-- geneModuleMembership = correlation of the module eigengene and the gene 
-- MMPvalue = p-value of correlation between module eigengene and the gene 
+Generate data frame for module membership for each gene (absolute value of correlation between module eigengene and gene).\
+- geneModuleMembership = correlation of the module eigengene and the gene - MMPvalue = p-value of correlation between module eigengene and the gene
+
 ```{r}
 #names(datExpr) = gsub(pattern = "*.t1", replacement = "", x = names(datExpr))
 #remove ".ti" from names in datExpr file and assign gene id as probe names
@@ -624,10 +810,9 @@ MMPvalue = as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamp
 names(geneModuleMembership) = paste("MM", modNames, sep="");
 names(MMPvalue) = paste("p.MM", modNames, sep="");
 ```
- 
-Generate dataframe with Gene Significance GS as the absolute value of the correlation between the gene and the lifestage timepoint 
-- geneTraitSignificance = correlation of the gene and lifestage time point 
-- GSPvalue = p-value of correlation between gene and lifestage time point  
+
+Generate dataframe with Gene Significance GS as the absolute value of the correlation between the gene and the lifestage timepoint - geneTraitSignificance = correlation of the gene and lifestage time point - GSPvalue = p-value of correlation between gene and lifestage time point
+
 ```{r}
 
 geneTraitSignificance = as.data.frame(cor(datExpr, time_stage, use = "p"));
@@ -637,15 +822,15 @@ names(geneTraitSignificance) = paste("GS.", names(time_stage), sep="");
 names(GSPvalue) = paste("p.GS.", names(time_stage), sep="");
 ```
 
-Generate a list of genes associated with each module. Change the module number in this code to look at respective module.   
+Generate a list of genes associated with each module. Change the module number in this code to look at respective module.
 
 ```{r}
 names(datExpr)[moduleColors=="1"]
 ```
 
-# **Generate files for Functional Enrichment**  
+# **Generate files for Functional Enrichment**
 
-Functional annotation file obtained from: http://cyanophora.rutgers.edu/montipora/Montipora_capitata_HIv3.genes.EggNog_results.txt.gz on 18 December 2022.  
+Functional annotation file obtained from: <http://cyanophora.rutgers.edu/montipora/Montipora_capitata_HIv3.genes.EggNog_results.txt.gz> on 18 December 2022.
 
 ```{r}
 Mcap.annot <- read.table("Mcap2020/Data/TagSeq/Montipora_capitata_HIv3.genes.EggNog_results.txt",  quote="", sep="\t", header=TRUE)
@@ -656,11 +841,12 @@ head(Mcap.annot)
 tail(Mcap.annot)
 ```
 
-This functional annotation as 24,072 genes. This is 44% of total protein predicted genes described in the publication associated with this annotation. https://academic.oup.com/gigascience/article/doi/10.1093/gigascience/giac098/6815755  
+This functional annotation as 24,072 genes. This is 44% of total protein predicted genes described in the publication associated with this annotation. <https://academic.oup.com/gigascience/article/doi/10.1093/gigascience/giac098/6815755>
 
-## Make a data frame that connects genes, traits, and modules  
+## Make a data frame that connects genes, traits, and modules
 
 Match up genes in datExpr file to annotation file
+
 ```{r}
 names(Mcap.annot)
 
@@ -678,9 +864,10 @@ missing<-as.data.frame(probes[row_nas])
 print(missing)
 ```
 
-3394 genes without annotation information. Spot check confirms the annotation file does not contain these genes.     
+3394 genes without annotation information. Spot check confirms the annotation file does not contain these genes.
 
 Create the starting data frame
+
 ```{r}
 names(Mcap.annot)
 
@@ -697,7 +884,7 @@ GSPvalue)
 head(geneInfo0)
 ```
 
-Add KEGG annotation information.  Downloaded from: http://cyanophora.rutgers.edu/montipora/Montipora_capitata_HIv3.genes.KEGG_results.txt.gz on 20 December 2022. 
+Add KEGG annotation information. Downloaded from: <http://cyanophora.rutgers.edu/montipora/Montipora_capitata_HIv3.genes.KEGG_results.txt.gz> on 20 December 2022.
 
 ```{r}
 kegg<-read.table("Mcap2020/Data/TagSeq/Montipora_capitata_HIv3.genes.KEGG_results.txt", sep="", quote="", na.strings=c("","NA"), blank.lines.skip = FALSE, header=FALSE)
@@ -705,17 +892,20 @@ kegg<-read.table("Mcap2020/Data/TagSeq/Montipora_capitata_HIv3.genes.KEGG_result
 head(kegg)
 ```
 
-Add KEGG annotations to each gene.  
+Add KEGG annotations to each gene.
+
 ```{r}
 geneInfo0$KEGG<-kegg$V2[match(geneInfo0$gene_id, kegg$V1)]
 ```
 
 Order modules by their significance for time_point
+
 ```{r}
 modOrder = order(-abs(cor(MEs, time_stage, use = "p")))
 ```
 
 Add module membership information in the chosen order
+
 ```{r}
 for (mod in 1:ncol(geneModuleMembership))
 {
@@ -728,6 +918,7 @@ paste("p.MM.", modNames[modOrder[mod]], sep=""))
 ```
 
 Order the genes in the geneInfo variable first by module color, then by geneTraitSignificance
+
 ```{r}
 geneOrder = order(geneInfo0$moduleColor, -abs(geneInfo0$GS.lifestage_num));
 geneInfo = geneInfo0[geneOrder, ]
@@ -735,6 +926,7 @@ head(geneInfo)
 ```
 
 Save geneInfo as a CSV
+
 ```{r}
 head(geneInfo)
 dim(geneInfo)
@@ -747,7 +939,8 @@ write.csv(geneInfo, file = "Mcap2020/Output/TagSeq/GenomeV3/geneInfo.csv") #gene
 
 ```
 
-Format our gene vst data frame for plotting.  
+Format our gene vst data frame for plotting.
+
 ```{r}
 gene_expr<-as.matrix(datExpr)
 gene_expr<-t(gene_expr)
@@ -755,9 +948,7 @@ gene_expr<-as.data.frame(gene_expr, row.names = rownames(gene_expr), make.names=
 ```
 
 Output for other analysis
+
 ```{r}
 write.csv(gene_expr, "Mcap2020/Output/TagSeq/GenomeV3/transformed_filtered_gene_counts.csv")
 ```
-
-
-
