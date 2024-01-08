@@ -1,0 +1,40 @@
+---
+title: "08-IGV-view"
+author: "Zach Bengtsson"
+date: "2023-08-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Download Genome FASTA and GFF
+
+```{bash}
+wget -P ~/github/oyster-lnc/data https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/022/765/GCF_002022765.2_C_virginica-3.0/GCF_002022765.2_C_virginica-3.0_genomic.fna.gz
+
+gunzip ~/github/oyster-lnc/data/GCF_002022765.2_C_virginica-3.0_genomic.fna.gz
+```
+
+
+```{bash}
+wget -P ~/github/oyster-lnc/data https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/022/765/GCF_002022765.2_C_virginica-3.0/GCF_002022765.2_C_virginica-3.0_genomic.gff.gz
+
+gunzip ~/github/oyster-lnc/data/GCF_002022765.2_C_virginica-3.0_genomic.gff.gz
+```
+
+## lncRNA GFF
+
+```{bash}
+wget -P ~/github/oyster-lnc/data https://gannet.fish.washington.edu/Atumefaciens/20220217-cvir-lncRNA_subsetting/GCF_002022765.2_C_virginica-3.0_lncRNA.gff
+```
+
+## Index Genome FASTA
+
+```{bash}
+/home/shared/samtools-1.12/samtools \
+faidx ~/github/oyster-lnc/data/GCF_002022765.2_C_virginica-3.0_genomic.fna
+
+```
+

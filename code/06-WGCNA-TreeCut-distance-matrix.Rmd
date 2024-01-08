@@ -170,7 +170,7 @@ all(rownames(metadataF$sample) == colnames(gcount_filtF))
 Display current order of metadata and gene count matrix.
 
 ```{r}
-metadata_orderedF$sample
+metadataF$sample
 colnames(gcount_filtF)
 ```
 
@@ -191,7 +191,7 @@ Create a DESeqDataSet design from gene count matrix and labels. Here we set the 
 ```{r}
 #Set DESeq2 design
 gdds <- DESeqDataSetFromMatrix(countData = gcount_filtF,
-                              colData = metadata_orderedF,
+                              colData = metadataF,
                               design = ~treatment)
 ```
 
@@ -489,8 +489,8 @@ Make a dataframe that has a column for each lifestage name and a row for samples
 This process changes lifestages from a categorical variable into a binary variable. This will allow for correlations between mean eigengenes and lifestage.
 
 ```{r}
-metadata_orderedF$num <- c("1")
-allTraits <- as.data.frame(pivot_wider(metadata_orderedF, names_from = treatment, values_from = num, id_cols = sample))
+metadataF$num <- c("1")
+allTraits <- as.data.frame(pivot_wider(metadataF, names_from = treatment, values_from = num, id_cols = sample))
 allTraits[is.na(allTraits)] <- c("0")
 rownames(allTraits) <- allTraits$sample
 datTraits <- allTraits[,c(-1)]
@@ -647,7 +647,7 @@ View module eigengene data and make dataframe for Strader plots.
 head(MEs)
 names(MEs)
 Strader_MEs <- MEs
-Strader_MEs$sample <- metadata_orderedF$sample
+Strader_MEs$sample <- metadataF$sample
 Strader_MEs$sample <- rownames(Strader_MEs)
 head(Strader_MEs)
 
@@ -669,32 +669,133 @@ write_csv(plot_MEs, "~/github/oyster-lnc/output/plotMEs")
 ```
 
 ```{r}
+# module_list<-c(levels(as.factor(data$Module)))
+# # loop through each compound in the list and create a plot
+# for (i in module_list) {
+#   # subset the fractions dataset for the current compound
+#   module_data <- subset(data, Module == i)
+# 
+# expression_plots<-plot_MEs%>%
+#   group_by(Module, sample) %>%
+#   ggplot(aes(x=sample, y=Mean, group=sample, colour=sample)) +
+#   facet_wrap(~ Module)+
+#   geom_jitter(alpha = 0.5) +
+#   geom_boxplot(alpha=0) +
+#   ylab("Mean Module Eigenegene") +
+#   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+#   theme_bw() + 
+#   theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+#         axis.title.x=element_text(size = 14), #set x-axis title size
+#         axis.ticks.x=element_blank(), #No x-label ticks
+#         #axis.title.y=element_blank(), #No y-axis title
+#         axis.text.y=element_text(size = 14), #set y-axis label size, 
+#         panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+#         panel.grid.major = element_blank(), #Set major gridlines
+#         panel.grid.minor = element_blank(), #Set minor gridlines
+#         axis.line = element_line(colour = "black"), #Set axes color
+#         plot.background=element_blank(),
+#         plot.title = element_text(size=22)); expression_plots
+# 
+# ggsave(expression_plots, file="~/github/oyster-lnc/output/expression_eigengene.jpeg", height=8, width=10)
+
+```
 
 
-expression_plots<-plot_MEs%>%
-  group_by(Module, sample) %>%
-  ggplot(aes(x=sample, y=Mean, group=sample, colour=sample)) +
-  facet_wrap(~ Module)+
-  geom_jitter(alpha = 0.5) +
-  geom_boxplot(alpha=0) +
+
+```{r}
+# module_list<-c(levels(as.factor(plot_MEs$Module)))
+
+# we tried to run this as a loop, but Raven didn't like the ggsave part. So this chunk can be used to look at specific genes of interest and save them manually. 
+
+#force to do only one 
+module_list<-c("MEdodgerblue1", "MEantiquewhite1", "MEcyan1", "MEburlywood2")
+
+# loop through each compound in the list and create a plot
+#for (i in module_list) {
+  # subset the fractions dataset for the current compound
+  #module_data <- subset(plot_MEs, Module == i)
+
+module_data<-subset(plot_MEs, Module %in% module_list)
+
+expression_plot<-module_data%>%
+  ggplot(aes(x=sample, y=Mean)) +
+  facet_wrap(~Module, ncol=1)+
+  geom_point(alpha = 0.5) +
   ylab("Mean Module Eigenegene") +
   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
-  theme_bw() + 
+  theme_bw() +
   theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
         axis.title.x=element_text(size = 14), #set x-axis title size
         axis.ticks.x=element_blank(), #No x-label ticks
         #axis.title.y=element_blank(), #No y-axis title
-        axis.text.y=element_text(size = 14), #set y-axis label size, 
+        axis.text.y=element_text(size = 14), #set y-axis label size,
         panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
         panel.grid.major = element_blank(), #Set major gridlines
         panel.grid.minor = element_blank(), #Set minor gridlines
         axis.line = element_line(colour = "black"), #Set axes color
         plot.background=element_blank(),
-        plot.title = element_text(size=22)); expression_plots
+        plot.title = element_text(size=22));expression_plot
 
-ggsave(expression_plots, file="~/github/oyster-lnc/output/expression_eigengene.jpeg", height=8, width=10)
+pdf(file="~/github/oyster-lnc/output/expression_plot.pdf", width = 5, height = 12)
+expression_plot
+dev.off()
+
+#ggsave(filename=paste0("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/module-plots/", i, ".jpeg"), plot=expression_plot, width=4, height=4, units="in")
+
+#}
+```
+
+Make plot by temperature treatment. 
+```{r}
+# assign treatment from metadata 
+plot_MEs_treat<-plot_MEs
+plot_MEs_treat$treatment<-metadataF$treatment[match(plot_MEs_treat$sample, metadataF$sample)]
+
+# make a plot!
+
+#force to do only one 
+module_list<-c("MEdodgerblue1", "MEantiquewhite1", "MEcyan1", "MEburlywood2")
+
+module_data_treat<-subset(plot_MEs_treat, Module %in% module_list)
+
+expression_plot_treatment<-module_data_treat%>%
+  ggplot(aes(x=treatment, y=Mean)) +
+  facet_wrap(~Module, ncol=1)+
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(aes(colour=treatment), outlier.size = 0)+
+  ylab("Mean Module Eigenegene") +
+  scale_colour_manual(values=c("blue", "red"))+
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+        axis.title.x=element_text(size = 14), #set x-axis title size
+        axis.ticks.x=element_blank(), #No x-label ticks
+        #axis.title.y=element_blank(), #No y-axis title
+        axis.text.y=element_text(size = 14), #set y-axis label size,
+        panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+        panel.grid.major = element_blank(), #Set major gridlines
+        panel.grid.minor = element_blank(), #Set minor gridlines
+        axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank(),
+        plot.title = element_text(size=22));expression_plot_treatment
+
+pdf(file="~/github/oyster-lnc/output/expression_plot_treatment.pdf", width = 5, height = 12)
+expression_plot_treatment
+dev.off()
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r, echo = TRUE}
 #convert wide format to long format for plotting  
