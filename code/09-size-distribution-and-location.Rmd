@@ -1,0 +1,139 @@
+---
+title: "09-size-distribution-and-location"
+author: "Zach Bengtsson"
+date: "2024-01-08"
+output: 
+  github_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    html_preview: true
+  html_document:
+    theme: readable
+    highlight: zenburn
+    toc: true
+    toc_float: true
+    number_sections: true
+    code_folding: show
+    code_download: true
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(tidyverse)
+library(kableExtra)
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+library(data.table)
+library(DT)
+library(Biostrings)
+library(tm)
+knitr::opts_chunk$set(
+  echo = TRUE,         # Display code chunks
+  eval = FALSE,         # Evaluate code chunks
+  warning = FALSE,     # Hide warnings
+  message = FALSE,     # Hide messages
+  fig.width = 6,       # Set plot width in inches
+  fig.height = 4,      # Set plot height in inches
+  fig.align = "center" # Align plots to the center
+)
+```
+
+## grabbing 3 fastas..
+
+```
+../../D-Apul/output/05.33-lncRNA-discovery/Apul_lncRNA_candidates.fasta
+../../E-Peve/output/05-lncRNA-discovery/Peve_lncRNA_candidates.fasta
+../../F-Pmea/output/02-lncRNA-discovery/Pmea_lncRNA_candidates.fasta
+```
+
+```{r, engine='bash', eval=TRUE}
+head ../../D-Apul/output/05.33-lncRNA-discovery/Apul_lncRNA_candidates.fasta
+```
+
+```{r, engine='bash', eval=TRUE}
+head ../../E-Peve/output/05-lncRNA-discovery/Peve_lncRNA_candidates.fasta
+```
+
+
+```{r, engine='bash', eval=TRUE}
+head ../../F-Pmea/output/02-lncRNA-discovery/Pmea_lncRNA_candidates.fasta
+```
+
+
+## length distribution
+
+```{r, eval=TRUE}
+# Read FASTA file
+fasta_file <- "~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa"  # Replace with the name of your FASTA file
+sequences <- readDNAStringSet(fasta_file)
+
+# Calculate sequence lengths
+sequence_lengths <- width(sequences)
+
+# Create a data frame
+sequence_lengths_df <- data.frame(Length = sequence_lengths)
+
+# Plot histogram using ggplot2
+ggplot(sequence_lengths_df, aes(x = Length)) +
+  geom_histogram(binwidth = 1, color = "grey", fill = "blue", alpha = 0.75) +
+  labs(title = "Histogram of Sequence Lengths",
+       x = "Sequence Length",
+       y = "Frequency") +
+  theme_minimal()
+```
+
+This is super suspicious, it seems like there are some 
+```{r}
+# Read FASTA file
+fasta_file <- "~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa"  # Replace with the name of your FASTA file
+sequences <- readDNAStringSet(fasta_file)
+
+# Calculate sequence lengths
+sequence_lengths <- width(sequences)
+
+# Create a data frame
+sequence_lengths_df <- data.frame(Length = sequence_lengths)
+
+# Bin data into specified length categories
+sequence_lengths_df$LengthCategory <- cut(
+  sequence_lengths_df$Length,
+  breaks = c(0, 199, 399, 599, 799, 999, Inf),  # Updated breaks to include <200
+  labels = c("<200", "200-399", "400-599", "600-799", "800-999", ">1000"),  # Updated labels
+  right = FALSE
+)
+
+# Plot histogram using ggplot2
+ggplot(sequence_lengths_df, aes(x = LengthCategory)) +
+  geom_bar(color = "grey", fill = "blue", alpha = 0.75) +
+  labs(title = "Histogram of Sequence Lengths by Categories",
+       x = "Sequence Length Category",
+       y = "Frequency") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),  # Removes major gridlines
+        panel.grid.minor = element_blank())  # Removes minor gridlines
+
+```
+This is really suspicious. THe vast majority are greater than 1000nt and I don't buy it. Seems like this FASTA from NCBI might just be picking up uncharacterized regions as opposed to lncRNAs.
+
+```{bash}
+cd ~/github/oyster-lnc/data
+
+# Convert the first GFF file to BED format
+/home/shared/bedtools2/bin/bedtools \
+gff2bed < GCF_002022765.2_C_virginica-3.0_lncRNA.gff > GCF_002022765.2_C_virginica-3.0_lncRNA.bed
+
+# Convert the second GFF file to BED format
+/home/shared/bedtools2/bin/bedtools \
+gff2bed < GCF_002022765.2_C_virginica-3.0_genomic.gff > GCF_002022765.2_C_virginica-3.0_genomic.bed
+
+
+```
+
+```{bash}
+/home/shared/gffread-0.12.7.Linux_x86_64/gffread \
+gffread "~/github/oyster-lnc/data/GCF_002022765.2_C_virginica-3.0_lncRNA.gff" -T -o "~/github/oyster-lnc/data/GCF_002022765.2_C_virginica-3.0_lncRNA.bed"
+
+```
+
