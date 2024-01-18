@@ -1,0 +1,609 @@
+---
+title: "11-mRNA-counts-DESeq2"
+author: "Zach Bengtsson"
+date: "2024-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+DESeq2 run for coding sequences for comparison to lncRNA.
+
+Generate kallisto index from CDS fasta obtained from Steven's previous workflow:
+https://github.com/sr320/ceabigr/blob/main/code/14-RNA-kallisto.Rmd
+## kallisto index
+```{bash}
+/home/shared/kallisto/kallisto \
+index -i /home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-index/GCF_002022765.2_C_virginica-3.0_cds_from_genomic.index \
+/home/shared/8TB_HDD_01/sr320/github/ceabigr/data/GCF_002022765.2_C_virginica-3.0_cds_from_genomic.fna
+```
+
+## kallisto abundance
+Get abundance for fq files using the CDS index...
+```{bash}
+find /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/*_R1.fastp-trim.20bp-5prime.20220224.fq.gz \
+| xargs -n 1 basename -s _R1.fastp-trim.20bp-5prime.20220224.fq.gz \
+| xargs -I{} /home/shared/kallisto/kallisto quant \
+  -i ~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-index/GCF_002022765.2_C_virginica-3.0_cds_from_genomic.index \
+  -o ~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-output/{} \
+  -t 20 \
+  /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/{}_R1.fastp-trim.20bp-5prime.20220224.fq.gz \
+  /home/shared/8TB_HDD_02/zbengt/data/oyster-lnc/01-lncRNA-kallisto/fq/{}_R2.fastp-trim.20bp-5prime.20220224.fq.gz \
+2>&1 | tee ~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/{}.out
+```
+
+## trinity count matrix
+
+Generate a count matrix from Kallisto abundance estimates for all transcripts in RNA-seq data…
+```{bash}
+perl /home/shared/trinityrnaseq-v2.12.0/util/abundance_estimates_to_matrix.pl \
+--est_method kallisto \
+--gene_trans_map none \
+--out_prefix  ~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-count-matrix/Cvirg_mRNA_count_matrix \
+--name_sample_by_basedir \
+ ~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-output/*/abundance.tsv
+```
+
+## Sex Specific Matrices
+From the combined count matrix, create female and male count matrices...
+
+```{r}
+# Load the data
+combined_matrix_mRNA <- read.table("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-count-matrix/Cvirg_mRNA_count_matrix.isoform.counts.matrix", row.names = 1)
+
+# Filter for "M" and "F"
+matrix_M_mRNA <- combined_matrix_mRNA[, grepl("M", colnames(combined_matrix_mRNA))]
+matrix_F_mRNA <- combined_matrix_mRNA[, grepl("F", colnames(combined_matrix_mRNA))]
+
+# Write to files
+write.csv(matrix_M_mRNA, "~/github/oyster-lnc/output/10-count-matrices-DESeq2-final/kallisto-count-matrix/matrix_M_mRNA.csv", row.names = TRUE)
+write.csv(matrix_F_mRNA, "~/github/oyster-lnc/output/10-count-matrices-DESeq2-final/kallisto-count-matrix/matrix_F_mRNA.csv", row.names = TRUE)
+
+```
+Objects combined_matrix_mRNA, matrix_M_mRNA, and matrix_F_mRNA can be used in the subsequent DESeq2 runs.
+
+## Combined male and female
+
+Load all of the packages you'll need...
+```{r}
+library(DESeq2)
+library(tidyverse)
+library(pheatmap)
+library(RColorBrewer)
+library(data.table)
+```
+
+Create data frame for DESeq to reference. This specifies which sample IDs are control and which are treatment (OA)…
+```{r}
+### data frame of conditions/treatments
+metaCombinedData_mRNA <- data.frame(
+  sample = c("S12M", "S13M", "S16F", "S19F", "S22F", "S23M", "S29F", "S31M", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S48M", "S50F", "S52F", "S53F", "S54F", "S59M", "S64M", "S6M", "S76F", "S77F", "S7M", "S9M"),
+  treatment = c("Exposed", "Control", "Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Control", "Control", "Exposed", "Control", "Exposed"),
+  sex = c("M", "M", "F", "F", "F", "M", "F", "M", "F", "F", "F", "F", "F", "F", "M", "F", "F", "F", "F", "M", "M", "M", "F", "F", "M", "M")
+)
+print(metaCombinedData_mRNA)
+```
+
+Count matrix alredy loaded as object "combined_matrix_mRNA"
+```{r}
+head(combined_matrix_mRNA)
+```
+
+Round counts to integers so they can be run through DESeq2 and summarize countmatrix structure to check and see that it worked…
+```{r}
+combined_matrix_mRNA <- round(combined_matrix_mRNA, 0)
+str(combined_matrix_mRNA)
+```
+
+Make sure number of count matrix columns matches number of meta dataframe rows...
+```{r}
+# Check the dimensions of countData matrix
+ncol(combined_matrix_mRNA)
+
+# Check the dimensions of colData matrix
+nrow(metaCombinedData_mRNA)
+
+```
+
+Use the DESeq2 package to create a DESeqDataSet object from a count matrix and metadata…
+```{r}
+combined_mRNA.deseq2.dds <- DESeqDataSetFromMatrix(countData = combined_matrix_mRNA,
+                                     colData = metaCombinedData_mRNA, 
+                                     design = ~ treatment + sex)
+```
+
+Performs differential expression analysis using DESeq2 on the combined_mRNA.deseq2.dds object, extract the results, converts them into a data frame, and then orders the rows of the data frame alphabetically based on the row names…
+```{r}
+combined_mRNA.deseq2.dds <- DESeq(combined_mRNA.deseq2.dds)
+combined_mRNA.deseq2.res <- results(combined_mRNA.deseq2.dds)
+combined_mRNA.deseq2.res <- as.data.frame(combined_mRNA.deseq2.res)  # Convert to data frame
+combined_mRNA.deseq2.res <- combined_mRNA.deseq2.res[order(rownames(combined_mRNA.deseq2.res)), ]
+```
+
+Check...
+```{r}
+str(combined_mRNA.deseq2.res)
+```
+
+Count the number of hits with adjusted p-value less then 0.05…
+```{r}
+dim(combined_mRNA.deseq2.res[!is.na(combined_mRNA.deseq2.res$padj) & combined_mRNA.deseq2.res$padj <= 0.05, ])
+```
+
+36,242 DEGs without NA and p-value less that 0.05
+
+```{r}
+# Subset the hits with adjusted p-value less than 0.05
+combined_mRNA.hits <- combined_mRNA.deseq2.res[!is.na(combined_mRNA.deseq2.res$padj) & combined_mRNA.deseq2.res$padj <= 0.05, ]
+
+# View the transcript IDs of the hits
+combined_mRNA_transcript_ids <- rownames(combined_mRNA.hits)
+print(combined_mRNA_transcript_ids)
+```
+
+Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
+```{r}
+tmp <- combined_mRNA.deseq2.res
+# The main plot
+plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
+     main="Combined mRNA - Treatment + Sex  (pval <= 0.05)",
+     xlab="mean of normalized counts",
+     ylab="Log2 Fold Change")
+# Getting the significant points and plotting them again so they're a different color
+tmp.sig <- combined_mRNA.deseq2.res[!is.na(combined_mRNA.deseq2.res$padj) & combined_mRNA.deseq2.res$padj <= 0.05, ]
+points(tmp.sig$baseMean, tmp.sig$log2FoldChange, pch=20, cex=0.45, col="red")
+# 2 FC lines
+abline(h=c(-1,1), col="blue")
+```
+
+Generate a PCA plot to see how all of the differential expression results cluster based on sex and treatment…
+```{r}
+combined_mRNA.vsd <- vst(combined_mRNA.deseq2.dds, blind = FALSE)
+plotPCA(combined_mRNA.vsd, intgroup = "sex")
+```
+
+```{r}
+combined_mRNA.vsd <- vst(combined_mRNA.deseq2.dds, blind = FALSE)
+plotPCA(combined_mRNA.vsd, intgroup = "treatment")
+```
+
+```{r}
+print(combined_mRNA.deseq2.dds)
+```
+
+
+Create heatmaps to view the top 50 differentially expressed lncRNAs…
+```{r}
+# Select top 50 differentially expressed genes
+res_mRNA <- results(combined_mRNA.deseq2.dds)
+res_ordered_mRNA <- res_mRNA[order(res_mRNA$padj), ]
+top_genes_mRNA <- row.names(res_ordered_mRNA)[1:50]
+
+# Extract counts and normalize
+counts_mRNA <- counts(combined_mRNA.deseq2.dds, normalized = TRUE)
+counts_top_mRNA <- counts_mRNA[top_genes_mRNA, ]
+
+# Log-transform counts
+log_counts_top_mRNA <- log2(counts_top_mRNA + 1)
+
+# Open a PDF device
+pdf("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/figure-pdfs/combined-mRNA-50-heatmap.pdf")
+
+# Generate heatmap
+pheatmap(log_counts_top_mRNA, scale = "row")
+
+# Close the PDF device
+dev.off()
+
+```
+
+Label PCA plot for treatment...
+```{r}
+install.packages("ggrepel")
+library("ggrepel")
+
+combined_mRNA.vsd <- vst(combined_mRNA.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData_mRNA <- plotPCA(combined_mRNA.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar_mRNA <- round(100 * attr(pcaData_mRNA, "percentVar_mRNA"))
+
+# create a ggplot object
+p <- ggplot(pcaData_mRNA, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar_mRNA[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_mRNA[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData_mRNA)), max.overlaps = Inf)
+
+print(p)
+
+```
+
+Label PCA plot for sex...
+```{r}
+combined_mRNA.vsd <- vst(combined_mRNA.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData_mRNA <- plotPCA(combined_mRNA.vsd, intgroup = "sex", returnData = TRUE)
+
+# get percent variation
+percentVar_mRNA <- round(100 * attr(pcaData_mRNA, "percentVar_mRNA"))
+
+# create a ggplot object
+p2 <- ggplot(pcaData_mRNA, aes(x = PC1, y = PC2, color = sex)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar_mRNA[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_mRNA[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData_mRNA)), max.overlaps = Inf)
+
+print(p2)
+
+```
+
+## Female oyster DESeq2 run
+
+Create data frame for DESeq to reference. This specifies which sample IDs are control and which are treatment (OA)…
+```{r}
+metaFemaleData_mRNA <- data.frame(
+  sample = c("S16F", "S19F", "S22F", "S29F", "S35F", "S36F", "S39F", "S3F", "S41F", "S44F", "S50F", "S52F", "S53F", "S54F", "S76F", "S77F"),
+  treatment = c("Control", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Exposed", "Exposed", "Control", "Exposed", "Control", "Control", "Control", "Control", "Exposed")
+  )
+```
+
+Load female mRNA count matrix already loaded as object "matrix_F_mRNA"
+```{r}
+head(matrix_F_mRNA)
+```
+
+Round counts to integers so they can be run through DESeq2 and summarize countmatrix structure to check and see that it worked…
+```{r}
+matrix_F_mRNA <- round(matrix_F_mRNA, 0)
+str(matrix_F_mRNA)
+```
+
+Make sure number of count matrix columns matches number of meta dataframe rows...
+```{r}
+# Check the dimensions of countData matrix
+ncol(matrix_F_mRNA)
+
+# Check the dimensions of colData matrix
+nrow(metaFemaleData_mRNA)
+
+```
+
+
+Use the DESeq2 package to create a DESeqDataSet object from a count matrix and metadata…
+```{r}
+female_mRNA.deseq2.dds <- DESeqDataSetFromMatrix(countData = matrix_F_mRNA,
+                                     colData = metaFemaleData_mRNA, 
+                                     design = ~ treatment)
+```
+
+Performs differential expression analysis using DESeq2 on the f.deseq2.dds object, extract the results, converts them into a data frame, and then orders the rows of the data frame alphabetically based on the row names…
+```{r}
+female_mRNA.deseq2.dds <- DESeq(female_mRNA.deseq2.dds)
+female_mRNA.deseq2.res <- results(female_mRNA.deseq2.dds)
+female_mRNA.deseq2.res <- as.data.frame(female_mRNA.deseq2.res)  # Convert to data frame
+female_mRNA.deseq2.res <- female_mRNA.deseq2.res[order(rownames(female_mRNA.deseq2.res)), ]
+```
+
+Check...
+```{r}
+str(female_mRNA.deseq2.res)
+```
+
+Count the number of hits with adjusted p-value less then 0.05…
+```{r}
+dim(female_mRNA.deseq2.res[!is.na(female_mRNA.deseq2.res$padj) & female_mRNA.deseq2.res$padj <= 0.05, ])
+```
+
+25 significantly differentially expressed DEG
+
+```{r}
+# Subset the hits with adjusted p-value less than 0.05
+female_mRNA_hits <- female_mRNA.deseq2.res[!is.na(female_mRNA.deseq2.res$padj) & female_mRNA.deseq2.res$padj <= 0.05, ]
+
+# View the transcript IDs of the hits
+female_mRNA_transcript_ids <- rownames(female_mRNA_hits)
+print(female_mRNA_transcript_ids)
+```
+
+Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
+```{r}
+tmp <- female_mRNA.deseq2.res
+# The main plot
+plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
+     main="Female - Treatment  (pval <= 0.05)",
+     xlab="mean of normalized counts",
+     ylab="Log2 Fold Change")
+# Getting the significant points and plotting them again so they're a different color
+tmp.sig <- female_mRNA.deseq2.res[!is.na(female_mRNA.deseq2.res$padj) & female_mRNA.deseq2.res$padj <= 0.05, ]
+points(tmp.sig$baseMean, tmp.sig$log2FoldChange, pch=20, cex=0.45, col="red")
+# 2 FC lines
+abline(h=c(-1,1), col="blue")
+```
+
+Generate a PCA plot to see how all of the differential expression results cluster based on treatment…
+```{r}
+female_mRNA.vsd <- vst(female_mRNA.deseq2.dds, blind = FALSE)
+plotPCA(female_mRNA.vsd, intgroup = "treatment")
+```
+
+```{r}
+female_mRNA.vsd <- vst(female_mRNA.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData_mRNA <- plotPCA(female_mRNA.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar_mRNA <- round(100 * attr(pcaData_mRNA, "percentVar_mRNA"))
+
+# create a ggplot object
+p <- ggplot(pcaData_mRNA, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar_mRNA[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_mRNA[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData_mRNA)))
+
+print(p)
+
+```
+
+
+```{r}
+print(female_mRNA.deseq2.dds)
+```
+
+Create heatmaps to view the top 50 differentially expressed lncRNAs…
+```{r}
+library(pheatmap)
+
+# Select top 50 differentially expressed genes
+res_mRNA <- results(female_mRNA.deseq2.dds)
+res_ordered_mRNA <- res_mRNA[order(res_mRNA$padj), ]
+top_genes_mRNA <- row.names(res_ordered_mRNA)[1:50]
+
+# Extract counts and normalize
+counts_mRNA <- counts(female_mRNA.deseq2.dds, normalized = TRUE)
+counts_top_mRNA <- counts_mRNA[top_genes_mRNA, ]
+
+# Log-transform counts
+log_counts_top_mRNA <- log2(counts_top_mRNA + 1)
+
+# Open a PDF device
+pdf("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/figure-pdfs/female-mRNA-50-heatmap.pdf")
+
+# Generate heatmap
+pheatmap(log_counts_top_mRNA, scale = "row")
+
+# Close the PDF device
+dev.off()
+
+```
+
+Remake heatmap to see whether or not control and exposed cluster...
+```{r}
+library(pheatmap)
+
+# Assuming you have a column 'treatment' in your metadata
+# Extract treatment information
+sample_treatment_mRNA <- as.data.frame(colData(female_mRNA.deseq2.dds)$treatment)
+rownames(sample_treatment_mRNA) <- colnames(counts_mRNA)
+
+# Select top 50 differentially expressed genes
+res_mRNA <- results(female_mRNA.deseq2.dds)
+res_ordered_mRNA <- res_mRNA[order(res_mRNA$padj), ]
+top_genes_mRNA <- row.names(res_ordered_mRNA)[1:50]
+
+# Extract counts and normalize
+counts_mRNA <- counts(female_mRNA.deseq2.dds, normalized = TRUE)
+counts_top_mRNA <- counts_mRNA[top_genes_mRNA, ]
+
+# Log-transform counts
+log_counts_top_mRNA <- log2(counts_top_mRNA + 1)
+
+# Open a PDF device with specified dimensions
+pdf("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/figure-pdfs/treatment-group-female-mRNA-50-heatmap.pdf", width = 14, height = 10)
+
+# Generate heatmap with adjusted settings
+pheatmap(log_counts_top_mRNA, 
+         scale = "row", 
+         annotation_col = sample_treatment_mRNA,
+         fontsize_row = 8, 
+         fontsize_col = 8, 
+         cellwidth = 20,
+         cellheight = 10,
+         border_color = NA) # Adjust fontsize, cell size, and border as needed
+
+# Close the PDF device
+dev.off()
+
+```
+
+
+## Male oyster DESeq2 run
+
+Create data frame for DESeq to reference. This specifies which sample IDs are control and which are treatment (OA)…
+```{r}
+metaMaleData_mRNA <- data.frame(
+  sample = c("S12M", "S13M", "S23M", "S31M", "S48M", "S59M", "S64M", "S6M", "S7M", "S9M"),
+  treatment = c("Exposed", "Control", "Exposed", "Exposed", "Exposed", "Exposed", "Control", "Control", "Control", "Exposed")
+  )
+```
+
+Load male lncRNA count matrix already loaded as object "matrix_M_mRNA"
+```{r}
+head(matrix_M_mRNA)
+```
+
+Round counts to integers so they can be run through DESeq2 and summarize countmatrix structure to check and see that it worked…
+```{r}
+matrix_M_mRNA <- round(matrix_M_mRNA, 0)
+str(matrix_M_mRNA)
+```
+
+Make sure number of count matrix columns matches number of meta dataframe rows...
+```{r}
+# Check the dimensions of countData matrix
+ncol(matrix_M_mRNA)
+
+# Check the dimensions of colData matrix
+nrow(metaMaleData_mRNA)
+
+```
+
+
+Use the DESeq2 package to create a DESeqDataSet object from a count matrix and metadata…
+```{r}
+library(DESeq2)
+
+male_mRNA.deseq2.dds <- DESeqDataSetFromMatrix(countData = matrix_M_mRNA,
+                                     colData = metaMaleData_mRNA, 
+                                     design = ~ treatment)
+```
+
+Performs differential expression analysis using DESeq2 on the f.deseq2.dds object, extract the results, converts them into a data frame, and then orders the rows of the data frame alphabetically based on the row names…
+```{r}
+male_mRNA.deseq2.dds <- DESeq(male_mRNA.deseq2.dds)
+male_mRNA.deseq2.res <- results(male_mRNA.deseq2.dds)
+male_mRNA.deseq2.res <- as.data.frame(male_mRNA.deseq2.res)  # Convert to data frame
+male_mRNA.deseq2.res <- male_mRNA.deseq2.res[order(rownames(male_mRNA.deseq2.res)), ]
+```
+
+Check...
+```{r}
+str(male_mRNA.deseq2.res)
+```
+
+Count the number of hits with adjusted p-value less then 0.05…
+```{r}
+dim(male_mRNA.deseq2.res[!is.na(male_mRNA.deseq2.res$padj) & male_mRNA.deseq2.res$padj <= 0.05, ])
+```
+
+107 significantly differentially expressed DEGs
+
+```{r}
+# Subset the hits with adjusted p-value less than 0.05
+male_mRNA_hits <- male_mRNA.deseq2.res[!is.na(male_mRNA.deseq2.res$padj) & male_mRNA.deseq2.res$padj <= 0.05, ]
+
+# View the transcript IDs of the hits
+male_mRNA_transcript_ids <- rownames(male_mRNA_hits)
+print(male_mRNA_transcript_ids)
+```
+
+Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
+```{r}
+tmp <- male_mRNA.deseq2.res
+# The main plot
+plot(tmp$baseMean, tmp$log2FoldChange, pch=20, cex=0.45, ylim=c(-3, 3), log="x", col="darkgray",
+     main="Male - Treatment  (pval <= 0.05)",
+     xlab="mean of normalized counts",
+     ylab="Log2 Fold Change")
+# Getting the significant points and plotting them again so they're a different color
+tmp.sig <- male_mRNA.deseq2.res[!is.na(male_mRNA.deseq2.res$padj) & male_mRNA.deseq2.res$padj <= 0.05, ]
+points(tmp.sig$baseMean, tmp.sig$log2FoldChange, pch=20, cex=0.45, col="red")
+# 2 FC lines
+abline(h=c(-1,1), col="blue")
+```
+
+Generate a PCA plot to see how all of the differential expression results cluster based on treatment…
+```{r}
+male_mRNA.vsd <- vst(male_mRNA.deseq2.dds, blind = FALSE)
+plotPCA(male_mRNA.vsd, intgroup = "treatment")
+```
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+
+male_mRNA.vsd <- vst(male_mRNA.deseq2.dds, blind = FALSE)
+
+# get PCA data
+pcaData_mRNA <- plotPCA(male_mRNA.vsd, intgroup = "treatment", returnData = TRUE)
+
+# get percent variation
+percentVar_mRNA <- round(100 * attr(pcaData_mRNA, "percentVar_mRNA"))
+
+# create a ggplot object
+p <- ggplot(pcaData_mRNA, aes(x = PC1, y = PC2, color = treatment)) +
+  geom_point(size = 3) +
+  xlab(paste0("PC1: ",percentVar_mRNA[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar_mRNA[2],"% variance")) +
+  geom_text_repel(aes(label = rownames(pcaData_mRNA)))
+
+print(p)
+
+```
+
+
+```{r}
+print(male_mRNA.deseq2.dds)
+```
+
+Create heatmaps to view the top 50 differentially expressed lncRNAs…
+```{r}
+library(pheatmap)
+
+# Select top 50 differentially expressed genes
+res_mRNA <- results(male_mRNA.deseq2.dds)
+res_ordered_mRNA <- res_mRNA[order(res_mRNA$padj), ]
+top_genes_mRNA <- row.names(res_ordered_mRNA)[1:50]
+
+# Extract counts and normalize
+counts_mRNA <- counts(male_mRNA.deseq2.dds, normalized = TRUE)
+counts_top_mRNA <- counts_mRNA[top_genes_mRNA, ]
+
+# Log-transform counts
+log_counts_top_mRNA <- log2(counts_top_mRNA + 1)
+
+# Open a PDF device
+pdf("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/figure-pdfs/male-mRNA-50-heatmap.pdf")
+
+# Generate heatmap
+pheatmap(log_counts_top_mRNA, scale = "row")
+
+# Close the PDF device
+dev.off()
+
+```
+
+Remake heatmap to see whether or not control and exposed cluster...
+```{r}
+library(pheatmap)
+
+# Assuming you have a column 'treatment' in your metadata
+# Extract treatment information
+sample_treatment_mRNA <- as.data.frame(colData(male_mRNA.deseq2.dds)$treatment)
+rownames(sample_treatment_mRNA) <- colnames(counts_mRNA)
+
+# Select top 50 differentially expressed genes
+res_mRNA <- results(male_mRNA.deseq2.dds)
+res_ordered_mRNA <- res_mRNA[order(res_mRNA$padj), ]
+top_genes_mRNA <- row.names(res_ordered_mRNA)[1:50]
+
+# Extract counts and normalize
+counts_mRNA <- counts(male_mRNA.deseq2.dds, normalized = TRUE)
+counts_top_mRNA <- counts_mRNA[top_genes_mRNA, ]
+
+# Log-transform counts
+log_counts_top_mRNA <- log2(counts_top_mRNA + 1)
+
+# Open a PDF device with specified dimensions
+pdf("~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/figure-pdfs/treatment-group-male-mRNA-50-heatmap.pdf", width = 14, height = 10)
+
+# Generate heatmap with adjusted settings
+pheatmap(log_counts_top_mRNA, 
+         scale = "row", 
+         annotation_col = sample_treatment_mRNA,
+         fontsize_row = 8, 
+         fontsize_col = 8, 
+         cellwidth = 20,
+         cellheight = 10,
+         border_color = NA) # Adjust fontsize, cell size, and border as needed
+
+# Close the PDF device
+dev.off()
+```
