@@ -886,7 +886,7 @@ Conduct data filtering, this includes:
 *pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.
 
 ```{r}
-filtM <- filterfun(pOverA(0.062,5))
+filtM <- filterfun(pOverA(0.5,20))
 #filtF <- filterfun(pOverA(1,5)) #used to be this
 
 #create filter for the counts data
@@ -905,7 +905,7 @@ gcount_filtM <- as.data.frame(gcountM[which(rownames(gcountM) %in% gn.keepM),])
 nrow(gcountM) #Before
 nrow(gcount_filtM) #After
 ```
-This is a different number post filter compared to females.
+This is a different number post filter compared to females. 0.062
 Filtered from 4515 to 4470 assuming 1 out of all individuals expressing at least 5 counts is an appropriate metric. *Can return to this to set a higher threshold (e.g., only lncRNA's present in 30% of samples)*
 
 ```{r}
@@ -1095,7 +1095,7 @@ plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
  text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
 ```
 
-Choosing power of 5, but could also choose 7 probably.
+Choosing power of 5, but could also choose 7 probably. 15!!!! Crosses 0.9
 
 ### Co-expression adjacency and topological overlap matrix similarity
 
@@ -1110,7 +1110,7 @@ options(stringsAsFactors = FALSE)
 enableWGCNAThreads() 
 
 # Run analysis
-softPower = 5
+softPower = 15
 adjacency = adjacency(datExpr, power = softPower, type = "signed")
 TOM = TOMsimilarity(adjacency, TOMType = "signed")
 dissTOM = 1 - TOM
@@ -1141,9 +1141,9 @@ plot(geneTree, xlab="", sub="", main= "Gene Clustering on TOM-based dissimilarit
 
 ```{r}
 # Define minimum module size and identify modules
-minModuleSize = 5
+minModuleSize = 40
 dynamicMods = cutreeDynamic(dendro = geneTree, distM = dissTOM,
-                            deepSplit = 4, pamRespectsDendro = FALSE,
+                            deepSplit = 3, pamRespectsDendro = FALSE,
                             minClusterSize = minModuleSize)
 
 # Display and save the results
@@ -1155,7 +1155,7 @@ save(dynamicMods, geneTree, file = "~/github/oyster-lnc/data/dyMod_geneTree.RDat
 load(file = "~/github/oyster-lnc/data/dyMod_geneTree.RData")
 
 # Plot the module assignment under the gene dendrogram
-dynamicColors = labels2colors(dynamicMods)
+dynamicColors = dynamicMods
 plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut",
                     dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05,
                     main = "Gene dendrogram and module colors")
@@ -1167,7 +1167,7 @@ Plot module similarity based on eigengene value
 
 ```{r}
 #Calculate eigengenes
-MEList = moduleEigengenes(datExpr, colors = dynamicColors, softPower = 7)
+MEList = moduleEigengenes(datExpr, colors = dynamicColors, softPower = 15)
 MEs = MEList$eigengenes
 
 #Calculate dissimilarity of module eigengenes
@@ -1183,7 +1183,7 @@ plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
 **Merge modules with \>85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
 
 ```{r}
-MEDissThres= 0.20 #merge modules that are 85% similar
+MEDissThres= 0.15 #merge modules that are 85% similar
 
 plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
 abline(h=MEDissThres, col="red")
@@ -1208,6 +1208,10 @@ MEs = mergedMEs;
 ncol(MEs) #How many modules do we have now?
 ```
 185 modules after merge.
+3 - 35
+5 - 38
+10 - 
+20 - 
 
 Plot new tree with modules.
 
@@ -1354,18 +1358,18 @@ library(dendsort)
 row_dend = dendsort(hclust(dist(moduleTraitCor)))
 col_dend = dendsort(hclust(dist(t(moduleTraitCor))))
 
-pdf(file = "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_heatmap.pdf", height = 40, width = 10)
+pdf(file = "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_heatmap_updated.pdf", height = 15, width = 10)
 Heatmap(moduleTraitCor, name = "Eigengene", row_title = "Gene Module", column_title = "Module-Treatment Eigengene Correlation", 
         col = blueWhiteRed(50), 
         row_names_side = "left", 
         #row_dend_side = "left",
         width = unit(5, "in"), 
-        height = unit(30, "in"), 
+        height = unit(12, "in"), 
         #column_dend_reorder = TRUE, 
         #cluster_columns = col_dend,
         row_dend_reorder = TRUE,
         #column_split = 6,
-        row_split=3,
+        #row_split=3,
         #column_dend_height = unit(.5, "in"),
         # column_order = lifestage_order, 
         cluster_rows = row_dend, 
@@ -1410,7 +1414,7 @@ Plot mean module eigengene for each module.
 ```{r, echo=true}
 #convert wide format to long format for plotting  
 plot_MEs<-Strader_MEs%>%
-  gather(., key="Module", value="Mean", 1:185)
+  gather(., key="Module", value="Mean", 1:31)
 
 write_csv(plot_MEs, "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_plotMEs")
 ```
@@ -1455,18 +1459,18 @@ write_csv(plot_MEs, "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_plotMEs")
 # we tried to run this as a loop, but Raven didn't like the ggsave part. So this chunk can be used to look at specific genes of interest and save them manually. 
 
 #force to do only one 
-module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
+#module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
 
 # loop through each compound in the list and create a plot
 #for (i in module_list) {
   # subset the fractions dataset for the current compound
   #module_data <- subset(plot_MEs, Module == i)
 
-module_data<-subset(plot_MEs, Module %in% module_list)
+#module_data<-subset(plot_MEs, Module %in% module_list)
 
-expression_plot<-module_data%>%
+expression_plot<-plot_MEs %>%
   ggplot(aes(x=sample, y=Mean)) +
-  facet_wrap(~Module, ncol=1)+
+  facet_wrap(~Module, ncol=5)+
   geom_point(alpha = 0.5) +
   ylab("Mean Module Eigenegene") +
   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
@@ -1483,7 +1487,7 @@ expression_plot<-module_data%>%
         plot.background=element_blank(),
         plot.title = element_text(size=22));expression_plot
 
-pdf(file="~/github/oyster-lnc/output/M_expression_plot.pdf", width = 5, height = 12)
+pdf(file="~/github/oyster-lnc/output/M_expression_plot.pdf", width = 12, height = 12)
 expression_plot
 dev.off()
 
@@ -1501,13 +1505,13 @@ plot_MEs_treat$treatment<-metadataF$treatment[match(plot_MEs_treat$sample, metad
 # make a plot!
 
 #force to do only one 
-module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
+#module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
 
-module_data_treat<-subset(plot_MEs_treat, Module %in% module_list)
+#module_data_treat<-subset(plot_MEs_treat, Module %in% module_list)
 
-expression_plot_treatment<-module_data_treat%>%
+expression_plot_treatment<-plot_MEs_treat%>%
   ggplot(aes(x=treatment, y=Mean)) +
-  facet_wrap(~Module, ncol=1)+
+  facet_wrap(~Module, ncol=5)+
   geom_jitter(alpha = 0.5) +
   geom_boxplot(aes(colour=treatment), outlier.size = 0)+
   ylab("Mean Module Eigenegene") +
@@ -1526,7 +1530,7 @@ expression_plot_treatment<-module_data_treat%>%
         plot.background=element_blank(),
         plot.title = element_text(size=22));expression_plot_treatment
 
-pdf(file="~/github/oyster-lnc/output/M_expression_plot_treatment.pdf", width = 5, height = 12)
+pdf(file="~/github/oyster-lnc/output/M_expression_plot_treatment.pdf", width = 12, height = 12)
 expression_plot_treatment
 dev.off()
 

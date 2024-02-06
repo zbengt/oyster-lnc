@@ -140,7 +140,14 @@ combined_mRNA.hits <- combined_mRNA.deseq2.res[!is.na(combined_mRNA.deseq2.res$p
 # View the transcript IDs of the hits
 combined_mRNA_transcript_ids <- rownames(combined_mRNA.hits)
 print(combined_mRNA_transcript_ids)
+
 ```
+
+```{r}
+# Save transcript IDs to a text file
+write.table(combined_mRNA_transcript_ids, "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/combined_mRNA_transcript_ids.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
 
 Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
 ```{r}
@@ -309,6 +316,11 @@ female_mRNA_hits <- female_mRNA.deseq2.res[!is.na(female_mRNA.deseq2.res$padj) &
 # View the transcript IDs of the hits
 female_mRNA_transcript_ids <- rownames(female_mRNA_hits)
 print(female_mRNA_transcript_ids)
+```
+
+```{r}
+# Save transcript IDs to a text file
+write.table(female_mRNA_transcript_ids, "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/female_mRNA_transcript_ids.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
 ```
 
 Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
@@ -493,6 +505,13 @@ male_mRNA_hits <- male_mRNA.deseq2.res[!is.na(male_mRNA.deseq2.res$padj) & male_
 male_mRNA_transcript_ids <- rownames(male_mRNA_hits)
 print(male_mRNA_transcript_ids)
 ```
+
+```{r}
+# Save transcript IDs to a text file
+write.table(male_mRNA_transcript_ids, "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/male_mRNA_transcript_ids.txt", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+
 
 Create a plot of differentially expressed lncRNAs with those that have a p-value less than 0.05 highlighted in red…
 ```{r}
