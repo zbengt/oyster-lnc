@@ -1,0 +1,63 @@
+---
+title: "14-comparative-BLASTs"
+author: "Zach Bengtsson"
+date: "2024-06-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# lncRNA FASTA retrieval
+
+### Crassostrea gigas
+This is retrieved from Roberts Lab genomic resources and I am unsure whether or not we want to use this one since it includes mitochondria
+
+Download GFF and FASTA
+```{bash}
+curl -o ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_lncRNA.gff http://owl.fish.washington.edu/halfshell/genomic-databank/cgigas_uk_roslin_v1_lncRNA.gff
+
+curl -o ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_genomic-mito.fa https://gannet.fish.washington.edu/panopea/Cg-roslin/cgigas_uk_roslin_v1_genomic-mito.fa
+```
+
+Get lncRNA FASTA
+```{bash}
+bedtools getfasta -fi ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_genomic-mito.fa -bed ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_lncRNA.gff -fo ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta
+
+```
+
+Count lncRNA totals
+```{r}
+# Function to count FASTA entries
+count_fasta_entries <- function(fasta_file) {
+  # Read the file
+  fasta_lines <- readLines(fasta_file)
+  
+  # Count lines starting with '>'
+  entry_count <- sum(grepl("^>", fasta_lines))
+  
+  return(entry_count)
+}
+
+# Specify the path to your FASTA file
+fasta_file <- "../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta"
+
+# Count the entries and print the result
+lncRNA_count <- count_fasta_entries(fasta_file)
+cat("Total number of lncRNAs:", lncRNA_count, "\n")
+
+```
+
+Create BLAST database
+```{bash}
+makeblastdb -in ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Cgigas/Cgigas-db
+
+```
+
+
+
+
+
+
+
