@@ -1,0 +1,840 @@
+---
+title: "15-WGCNA-all"
+author: "Zach Bengtsson"
+date: "2024-06-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load required libraries.
+
+```{r}
+if ("tidyverse" %in% rownames(installed.packages()) == 'FALSE') install.packages('tidyverse') 
+if ("genefilter" %in% rownames(installed.packages()) == 'FALSE') BiocManager::install("genefilter") 
+if ("DESeq2" %in% rownames(installed.packages()) == 'FALSE') BiocManager::install('DESeq2') 
+if ("RColorBrewer" %in% rownames(installed.packages()) == 'FALSE') install.packages('RColorBrewer') 
+if ("WGCNA" %in% rownames(installed.packages()) == 'FALSE') install.packages('WGCNA') 
+if ("flashClust" %in% rownames(installed.packages()) == 'FALSE') install.packages('flashClust') 
+if ("gridExtra" %in% rownames(installed.packages()) == 'FALSE') install.packages('gridExtra') 
+if ("ComplexHeatmap" %in% rownames(installed.packages()) == 'FALSE') BiocManager::install('ComplexHeatmap') 
+if ("goseq" %in% rownames(installed.packages()) == 'FALSE') BiocManager::install('goseq')
+if ("dplyr" %in% rownames(installed.packages()) == 'FALSE') install.packages('dplyr') 
+if ("clusterProfiler" %in% rownames(installed.packages()) == 'FALSE') BiocManager::install('clusterProfiler') 
+if ("pheatmap" %in% rownames(installed.packages()) == 'FALSE') install.packages('pheatmap') 
+if ("magrittr" %in% rownames(installed.packages()) == 'FALSE') install.packages('magrittr') 
+if ("vegan" %in% rownames(installed.packages()) == 'FALSE') install.packages('vegan') 
+if ("factoextra" %in% rownames(installed.packages()) == 'FALSE') install.packages('factoextra') 
+
+library("tidyverse")
+library("genefilter")
+library("DESeq2")
+library("RColorBrewer")
+library("WGCNA")
+library("flashClust")
+library("gridExtra")
+library("ComplexHeatmap")
+library("goseq")
+library("dplyr")
+library("clusterProfiler")
+library("pheatmap")
+library("magrittr")
+library("vegan")
+library("factoextra")
+library("dplyr")
+
+```
+
+# Male - lncRNA & mRNA
+
+## **Data input**
+
+Need to merge lncRNA and mRNA count matrices for 10 male samples
+
+```{r}
+# Load necessary libraries
+library(dplyr)
+library(readr)
+
+# Load the lncRNA and mRNA count matrices
+lncRNA_df <- read_csv("../output/10-count-matrices-DESeq2-final/kallisto-count-matrix/matrix_M.csv")
+mRNA_df <- read_csv("../output/10-count-matrices-DESeq2-final/kallisto-count-matrix/matrix_M_mRNA.csv")
+
+# Add the prefix to the gene IDs
+lncRNA_df <- lncRNA_df %>%
+  mutate(GeneID = paste0("lncRNA_", lncRNA_df[[1]])) %>%
+  select(GeneID, everything(), -1)
+
+mRNA_df <- mRNA_df %>%
+  mutate(GeneID = paste0("mRNA_", mRNA_df[[1]])) %>%
+  select(GeneID, everything(), -1)
+
+# Merge the dataframes
+full_merged_df <- bind_rows(lncRNA_df, mRNA_df)
+
+# Save the merged dataframe to a new CSV file
+write_csv(full_merged_df, "../output/15-WGCNA-all/count-matrix/full_merged_counts.csv")
+
+print("Merged count matrix saved to '../output/15-WGCNA-alll/count-matrix/full_merged_counts.csv'.")
+
+```
+
+```{r}
+# Extract the first column containing gene IDs
+gene_ids <- as.character(full_merged_df[[1]])
+
+# Remove any leading/trailing spaces
+gene_ids <- trimws(gene_ids)
+
+# Print the first few entries to debug
+print(head(gene_ids))
+
+# Count rows that start with "lncRNA_"
+lncRNA_count <- sum(grepl("^lncRNA_", gene_ids))
+
+# Count rows that start with "mRNA_"
+mRNA_count <- sum(grepl("^mRNA_", gene_ids))
+
+# Print the counts
+cat("Number of rows starting with 'lncRNA_':", lncRNA_count, "\n")
+cat("Number of rows starting with 'mRNA_':", mRNA_count, "\n")
+```
+
+
+```{r}
+#load counts for male samples
+gcountM <- read.csv("../output/15-WGCNA-all/count-matrix/full_merged_counts.csv", header = TRUE, row.names = 1, check.names = FALSE)
+head(gcountM)
+
+```
+
+Round counts...
+```{r}
+gcountM <- round(gcountM, 0)
+str(gcountM)
+```
+
+Check that there are no genes with 0 counts across all samples.
+Make sure to always adjust the dimensions for how many samples you have in your count matrix.
+
+```{r}
+nrow(gcountM)
+gcountM<-gcountM %>%
+     mutate(Total = rowSums(.[, 1:10]))%>%
+    filter(!Total==0)%>%
+    dplyr::select(!Total)
+nrow(gcountM)
+```
+
+We had 64963 RNAs, which was filtered down to 59793 by removing genes with row sums of 0 (those not detected in our sequences).
+
+```{r}
+# Extract the row names (gene IDs)
+gene_ids <- rownames(gcountM)
+
+# Remove any leading/trailing spaces
+gene_ids <- trimws(gene_ids)
+
+# Print the first few entries to debug
+print(head(gene_ids))
+
+# Count rows that start with "lncRNA_"
+lncRNA_count <- sum(grepl("^lncRNA_", gene_ids))
+
+# Count rows that start with "mRNA_"
+mRNA_count <- sum(grepl("^mRNA_", gene_ids))
+
+# Print the counts
+cat("Number of rows starting with 'lncRNA_':", lncRNA_count, "\n")
+cat("Number of rows starting with 'mRNA_':", mRNA_count, "\n")
+
+```
+
+Conduct data filtering, this includes:
+
+*pOverA*: Basically using this to choose lncRNAs that are expressed in 50% of samples (since there are two groups control and treatment 50/50). Setting to 0 seems important since there are 2 treatments, meaning some samples would be at 0 if the lncRNA is only environmentally sensitive.
+
+```{r}
+filtM <- filterfun(pOverA(0.5,20))
+#filtF <- filterfun(pOverA(1,5)) #used to be this
+
+#create filter for the counts data
+gfiltM <- genefilter(gcountM, filtM)
+
+#identify genes to keep by count filter
+gkeepM <- gcountM[gfiltM,]
+
+#identify gene lists
+gn.keepM <- rownames(gkeepM)
+
+#gene count data filtered in PoverA, P percent of the samples have counts over A
+gcount_filtM <- as.data.frame(gcountM[which(rownames(gcountM) %in% gn.keepM),])
+
+#How many rows do we have before and after filtering?
+nrow(gcountM) #Before
+nrow(gcount_filtM) #After
+```
+This is a different number post filter compared to females. 0.062
+Filtered from 59793 to 41151 assuming 5 out of all individuals expressing at least 20 counts is an appropriate metric. *Can return to this to set a higher threshold (e.g., only lncRNA's present in 30% of samples)*
+
+```{r}
+head(gcount_filtM)
+```
+
+```{r}
+# Extract the row names (gene IDs)
+gene_ids <- rownames(gcount_filtM)
+
+# Remove any leading/trailing spaces
+gene_ids <- trimws(gene_ids)
+
+# Print the first few entries to debug
+print(head(gene_ids))
+
+# Count rows that start with "lncRNA_"
+lncRNA_count <- sum(grepl("^lncRNA_", gene_ids))
+
+# Count rows that start with "mRNA_"
+mRNA_count <- sum(grepl("^mRNA_", gene_ids))
+
+# Print the counts
+cat("Number of rows starting with 'lncRNA_':", lncRNA_count, "\n")
+cat("Number of rows starting with 'mRNA_':", mRNA_count, "\n")
+
+```
+
+After filtering for pOverA, we have approximately 3862 lncRNAs and 37289 mRNAs.
+
+In order for the DESeq2 algorithms to work, the SampleIDs on the metadta file and count matrices have to match exactly and in the same order. The following R clump will check to make sure that these match. Should return TRUE.
+
+```{r}
+#Checking that all row and column names match. Should return "TRUE"
+all(rownames(metadataM$sample) %in% colnames(gcount_filtM))
+all(rownames(metadataM$sample) == colnames(gcount_filtM)) 
+```
+
+Display current order of metadata and gene count matrix.
+
+```{r}
+metadataM$sample
+colnames(gcount_filtM)
+```
+
+Order metadata the same as the column order in the gene matrix.
+
+# **Construct DESeq2 data set**
+
+Create a DESeqDataSet design from gene count matrix and labels. Here we set the design to look at lifestage to test for any differences in gene expression across timepoints.
+
+```{r}
+library(DESeq2)
+#Set DESeq2 design
+gdds <- DESeqDataSetFromMatrix(countData = gcount_filtM,
+                              colData = metadataM,
+                              design = ~treatment)
+```
+
+First we are going to log-transform the data using a variance stabilizing transforamtion (VST). This is only for visualization purposes. Essentially, this is roughly similar to putting the data on the log2 scale. It will deal with the sampling variability of low counts by calculating within-group variability (if blind=FALSE). Importantly, it does not use the design to remove variation in the data, and so can be used to examine if there may be any variability do to technical factors such as extraction batch effects.
+
+To do this we first need to calculate the size factors of our samples. This is a rough estimate of how many reads each sample contains compared to the others. In order to use VST (the faster log2 transforming process) to log-transform our data, the size factors need to be less than 4.
+
+Chunk should return TRUE if \<4.
+
+```{r}
+SF.gdds <- estimateSizeFactors(gdds) #estimate size factors to determine if we can use vst  to transform our data. Size factors should be less than 4 for us to use vst
+print(sizeFactors(SF.gdds)) #View size factors
+
+all(sizeFactors(SF.gdds)) < 4
+```
+
+All size factors are less than 4, so we can use VST transformation.
+
+```{r}
+gvst <- vst(gdds, blind=FALSE) #apply a variance stabilizing transformation to minimize effects of small counts and normalize wrt library size
+head(assay(gvst), 3) #view transformed gene count data for the first three genes in the dataset.  
+```
+
+# **Examine PCA and sample distances**
+
+Plot a heatmap to sample to sample distances
+
+```{r}
+library(RColorBrewer)
+library(pheatmap)
+
+gsampleDists <- dist(t(assay(gvst))) #calculate distance matix
+gsampleDistMatrix <- as.matrix(gsampleDists) #distance matrix
+rownames(gsampleDistMatrix) <- colnames(gvst) #assign row names
+colnames(gsampleDistMatrix) <- NULL #assign col names
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255) #assign colors
+
+save_pheatmap_pdf <- function(x, filename, width=7, height=7) {
+   stopifnot(!missing(x))
+   stopifnot(!missing(filename))
+   pdf(filename, width=width, height=height)
+   grid::grid.newpage()
+   grid::grid.draw(x$gtable)
+   dev.off()
+}
+
+pht<-pheatmap(gsampleDistMatrix, #plot matrix
+         clustering_distance_rows=gsampleDists, #cluster rows
+         clustering_distance_cols=gsampleDists, #cluster columns
+         col=colors) #set colors
+
+```
+
+Plot a PCA of samples by plote PCA by treatment...
+
+```{r}
+library(ggplot2)
+gPCAdata <- plotPCA(gvst, intgroup = c("treatment"), returnData=TRUE, ntop=4391) #use ntop to specify all genes
+
+percentVar <- round(100*attr(gPCAdata, "percentVar")) #plot PCA of samples with all data
+
+allgenesfilt_PCA <- ggplot(gPCAdata, aes(PC1, PC2, shape=treatment)) + 
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  coord_fixed()+
+  theme_bw() + #Set background color
+  theme(panel.border = element_blank(), # Set border
+                     #panel.grid.major = element_blank(), #Set major gridlines 
+                     #panel.grid.minor = element_blank(), #Set minor gridlines
+                     axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank()) # + #Set the plot background
+  #theme(legend.position = ("none")) #set title attributes
+allgenesfilt_PCA
+#ggsave("Mcap2020/Figures/TagSeq/GenomeV3/allgenesfilt-PCA.pdf", allgenesfilt_PCA, width=11, height=8)
+```
+
+# **WGCNA analysis using Dynamic Tree Cut**
+
+Data are analyzed using dynamic tree cut approach, our data set is not large enough to have to use blockwiseModules to break data into "blocks". This code uses step by step network analysis and module detection based on scripts from <https://horvath.genetics.ucla.edu/html/CoexpressionNetwork/Rpackages/WGCNA/Tutorials/index.html>.
+
+Transpose the filtered gene count matrix so that the gene IDs are rows and the sample IDs are columns.
+
+```{r}
+datExpr <- as.data.frame(t(assay(gvst))) #transpose to output to a new data frame with the column names as row names. And make all data numeric
+```
+
+Check for genes and samples with too many missing values with goodSamplesGenes. There shouldn't be any because we performed pre-filtering
+
+```{r}
+library(WGCNA)
+gsg = goodSamplesGenes(datExpr, verbose = 3)
+gsg$allOK #Should return TRUE if not, the R chunk below will take care of flagged data
+```
+
+Remove flagged samples if the allOK is FALSE, not used here.
+
+```{r}
+#ncol(datExpr) #number genes before
+#if (!gsg$allOK) #If the allOK is FALSE...
+#{
+# Optionally, print the gene and sample names that are flagged:
+#if (sum(!gsg$goodGenes)>0)
+#printFlush(paste("Removing genes:", paste(names(datExpr)[!gsg$goodGenes], collapse = ", ")));
+#if (sum(!gsg$goodSamples)>0)
+#printFlush(paste("Removing samples:", paste(rownames(datExpr)[!gsg$goodSamples], collapse = ", ")));
+# Remove the offending genes and samples from the data:
+#datExpr = datExpr[gsg$goodSamples, gsg$goodGenes]
+#}
+#ncol(datExpr) #number genes after
+```
+
+Look for outliers by examining tree of samples
+
+```{r}
+# sampleTree = hclust(dist(datExpr), method = "average");
+# # Plot the sample tree: Open a graphic output window of size 12 by 9 inches
+# # The user should change the dimensions if the window is too large or too small.
+# plot(sampleTree, main = "Sample clustering to detect outliers", sub="", xlab="", cex.lab = 1.5, cex.axis = 1.5, cex.main = 2)
+# dev.off()
+```
+
+There don't look to be any outliers, so we will move on with business as usual.
+
+## Network construction and consensus module detection
+
+### Choosing a soft-thresholding power: Analysis of network topology β
+
+The soft thresholding power (β) is the number to which the co-expression similarity is raised to calculate adjacency. The function pickSoftThreshold performs a network topology analysis. The user chooses a set of candidate powers, however the default parameters are suitable values.
+
+```{r, message=FALSE, warning=FALSE}
+allowWGCNAThreads()
+# # Choose a set of soft-thresholding powers
+powers <- c(seq(from = 1, to=19, by=2), c(21:30)) #Create a string of numbers from 1 through 10, and even numbers from 10 through 20
+# 
+# # Call the network topology analysis function
+sft <-pickSoftThreshold(datExpr, powerVector = powers, verbose = 5)
+```
+
+Plot the results.
+
+```{r}
+sizeGrWindow(9, 5)
+par(mfrow = c(1,2));
+cex1 = 0.9;
+# # # Scale-free topology fit index as a function of the soft-thresholding power
+plot(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+      xlab="Soft Threshold (power)",ylab="Scale Free Topology Model Fit,signed R^2",type="n",
+     main = paste("Scale independence"));
+ text(sft$fitIndices[,1], -sign(sft$fitIndices[,3])*sft$fitIndices[,2],
+     labels=powers,cex=cex1,col="red");
+# # # this line corresponds to using an R^2 cut-off
+ abline(h=0.9,col="red")
+# # # Mean connectivity as a function of the soft-thresholding power
+ plot(sft$fitIndices[,1], sft$fitIndices[,5],
+     xlab="Soft Threshold (power)",ylab="Mean Connectivity", type="n",
+     main = paste("Mean connectivity"))
+ text(sft$fitIndices[,1], sft$fitIndices[,5], labels=powers, cex=cex1,col="red")
+```
+
+Choosing power of 7
+
+### Co-expression adjacency and topological overlap matrix similarity
+
+```{r}
+# Load the data saved
+#load(file="~/github/oyster-lnc/data/datExpr.RData")
+```
+
+```{r}
+library(WGCNA)
+# Set up workspace and allow multi-threading within WGCNA
+options(stringsAsFactors = FALSE)
+enableWGCNAThreads() 
+
+# Run analysis
+softPower = 7
+adjacency = adjacency(datExpr, power = softPower, type = "signed")
+TOM = TOMsimilarity(adjacency, TOMType = "signed")
+dissTOM = 1 - TOM
+
+# Save the results
+save(adjacency, TOM, dissTOM, file = "~/github/oyster-lnc/data/adjTOM.RData")
+save(dissTOM, file = "~/github/oyster-lnc/data/dissTOM.RData")
+```
+
+### Clustering using TOM
+
+```{r}
+dim(dissTOM)
+str(geneTree)  # Structure of the dendrogram object
+
+```
+
+```{r}
+library(flashClust)
+# Load in dissTOM file
+tmp <- load(file="~/github/oyster-lnc/data/dissTOM.RData")
+
+# Form distance matrix and plot a dendrogram of genes
+geneTree <- flashClust(as.dist(dissTOM), method="average")
+plot(geneTree, xlab="", sub="", main= "Gene Clustering on TOM-based dissimilarity",hang=0.04)
+```
+
+### Module identification using dynamicTreeCut
+
+```{r}
+# Define minimum module size and identify modules
+minModuleSize = 40
+dynamicMods = cutreeDynamic(dendro = geneTree, distM = dissTOM,
+                            deepSplit = 3, pamRespectsDendro = FALSE,
+                            minClusterSize = minModuleSize)
+
+# Display and save the results
+print(table(dynamicMods))
+save(dynamicMods, geneTree, file = "~/github/oyster-lnc/data/dyMod_geneTree.RData")
+
+
+# Load modules calculated from the adjacency matrix
+load(file = "~/github/oyster-lnc/data/dyMod_geneTree.RData")
+
+# Plot the module assignment under the gene dendrogram
+dynamicColors = dynamicMods
+plotDendroAndColors(geneTree, dynamicColors, "Dynamic Tree Cut",
+                    dendroLabels = FALSE, hang = 0.03, addGuide = TRUE, guideHang = 0.05,
+                    main = "Gene dendrogram and module colors")
+```
+
+### Merge modules with similar expression profiles
+
+Plot module similarity based on eigengene value
+
+```{r}
+#Calculate eigengenes
+MEList = moduleEigengenes(datExpr, colors = dynamicColors, softPower = 7)
+MEs = MEList$eigengenes
+
+#Calculate dissimilarity of module eigengenes
+MEDiss = 1-cor(MEs)
+
+#Cluster again and plot the results
+METree = flashClust(as.dist(MEDiss), method = "average")
+
+pdf(file="~/github/oyster-lnc/output/12-WGCNA-lncRNA/eigengeneClustering1.pdf", width = 20)
+plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+```
+
+**Merge modules with \>85% eigengene similarity.** Most studies use somewhere between 80-90% similarity. I will use 85% similarity as my merging threshold.
+
+```{r}
+MEDissThres= 0.15 #merge modules that are 85% similar
+
+plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+abline(h=MEDissThres, col="red")
+dev.off()
+
+merge= mergeCloseModules(datExpr, dynamicColors, cutHeight= MEDissThres, verbose =3)
+
+mergedColors= merge$colors
+mergedMEs= merge$newMEs
+
+plotDendroAndColors(geneTree, cbind(dynamicColors, mergedColors), c("Dynamic Tree Cut", "Merged dynamic"), dendroLabels= FALSE, hang=0.03, addGuide= TRUE, guideHang=0.05)
+```
+
+Save new colors
+
+```{r}
+moduleLabels=mergedColors
+moduleColors = mergedColors # Rename to moduleColors
+#colorOrder = c("grey", standardColors(50)); # Construct numerical labels corresponding to the colors
+#moduleLabels = match(moduleColors, colorOrder)-1;
+MEs = mergedMEs;
+ncol(MEs) #How many modules do we have now?
+```
+185 modules after merge.
+3 - 35
+5 - 38
+10 - 
+20 - 
+
+Plot new tree with modules.
+
+```{r}
+#Calculate dissimilarity of module eigengenes
+MEDiss = 1-cor(MEs)
+#Cluster again and plot the results
+METree = flashClust(as.dist(MEDiss), method = "average")
+# MEtreePlot = plot(METree, main = "Clustering of module eigengenes", xlab = "", sub = "")
+```
+
+Display table of module gene counts.
+
+```{r}
+table(mergedColors)
+table<-as.data.frame(table(mergedColors))
+write.csv(table, "~/github/oyster-lnc/output/12-WGCNA-lncRNA/F_genes_per_module.csv")
+```
+
+### Quantifying module--trait associations
+
+Prepare trait data. Data has to be numeric, so I will substitute time_points and type for numeric values.
+
+Make a dataframe that has a column for treatment and a row for samples.
+
+This will allow for correlations between mean eigengenes and treatment.
+
+```{r}
+library(tidyr)
+metadataM$num <- c("1")
+allTraits <- as.data.frame(pivot_wider(metadataM, names_from = treatment, values_from = num, id_cols = sample))
+allTraits[is.na(allTraits)] <- c("0")
+rownames(allTraits) <- allTraits$sample
+datTraits <- allTraits[,c(-1)]
+datTraits
+```
+
+Define numbers of genes and samples and print.
+
+```{r}
+nGenes = ncol(datExpr)
+nSamples = nrow(datExpr)
+
+nGenes
+nSamples
+```
+
+We have 4470 genes and 10 samples.
+
+Generate labels for module eigengenes as numbers.
+
+```{r}
+MEs0 = moduleEigengenes(datExpr, moduleLabels, softPower=7)$eigengenes
+MEs = orderMEs(MEs0)
+names(MEs)
+```
+
+Our module names are:
+
+Like a lot
+
+```{r}
+# Check the class of MEs
+class(MEs)
+
+# Check the class of datTraits
+class(datTraits)
+
+```
+
+```{r}
+# Check the first few rows of MEs
+head(MEs)
+
+# Check the first few rows of datTraits
+head(datTraits)
+
+```
+
+Correlations of traits with eigengenes
+
+```{r}
+moduleTraitCor = cor(MEs, datTraits, use = "p");
+moduleTraitPvalue = corPvalueStudent(moduleTraitCor, nSamples);
+Colors=sub("ME","", names(MEs))
+
+pdf(file="~/github/oyster-lnc/output/12-WGCNA-lncRNA/hclust.pdf")
+moduleTraitTree = hclust(dist(t(moduleTraitCor)), method = "average")
+plot(moduleTraitTree)
+```
+
+```{r}
+# Check the dimensions of the moduleTraitCor matrix
+corDimensions <- dim(moduleTraitCor)
+
+# Check if it's a square matrix
+if (corDimensions[1] == corDimensions[2]) {
+  cat("moduleTraitCor is a square matrix with dimensions:", corDimensions[1], "x", corDimensions[2], "\n")
+} else {
+  cat("moduleTraitCor is not a square matrix. Dimensions:", corDimensions[1], "x", corDimensions[2], "\n")
+}
+
+```
+
+Correlations of genes with eigengenes. Calculate correlations between ME's and treatment.
+
+```{r}
+moduleGeneCor=cor(MEs,datExpr)
+moduleGenePvalue = corPvalueStudent(moduleGeneCor, nSamples);
+```
+
+Calculate kME values (module membership).
+
+```{r}
+datKME = signedKME(datExpr, MEs, outputColumnName = "kME")
+head(datKME)
+```
+
+Save module colors and labels for use in subsequent analyses.
+
+```{r}
+save(MEs, moduleLabels, moduleColors, geneTree, file="~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_NetworkConstruction-stepByStep.RData") 
+```
+
+### Plot module-trait associations
+
+Generate a complex heatmap of module-trait relationships.
+
+```{r}
+library(ComplexHeatmap)
+#bold sig p-values
+#dendrogram with WGCNA MEtree cut-off
+#colored y-axis
+
+
+#Create list of pvalues for eigengene correlation with specific life stages
+heatmappval <- signif(moduleTraitPvalue, 1)
+
+#Make list of heatmap row colors
+htmap.colors <- names(MEs)
+htmap.colors <- gsub("ME", "", htmap.colors)
+
+# lifestage_order<-c("Egg (1 hpf)", "Embryo (5 hpf)", "Embryo (38 hpf)", "Embryo (65 hpf)", "Larvae (93 hpf)", "Larvae (163 hpf)", "Larvae (231 hpf)", "Metamorphosed Polyp (231 hpf)", "Attached Recruit (183 hpf)", "Attached Recruit (231 hpf)")
+
+library(dendsort)
+row_dend = dendsort(hclust(dist(moduleTraitCor)))
+col_dend = dendsort(hclust(dist(t(moduleTraitCor))))
+
+pdf(file = "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_heatmap_updated.pdf", height = 15, width = 10)
+Heatmap(moduleTraitCor, name = "Eigengene", row_title = "Gene Module", column_title = "Module-Treatment Eigengene Correlation", 
+        col = blueWhiteRed(50), 
+        row_names_side = "left", 
+        #row_dend_side = "left",
+        width = unit(5, "in"), 
+        height = unit(12, "in"), 
+        #column_dend_reorder = TRUE, 
+        #cluster_columns = col_dend,
+        row_dend_reorder = TRUE,
+        #column_split = 6,
+        #row_split=3,
+        #column_dend_height = unit(.5, "in"),
+        # column_order = lifestage_order, 
+        cluster_rows = row_dend, 
+        row_gap = unit(2.5, "mm"), 
+        border = TRUE,
+        cell_fun = function(j, i, x, y, w, h, col) {
+        if(heatmappval[i, j] < 0.05) {
+            grid.text(sprintf("%s", heatmappval[i, j]), x, y, gp = gpar(fontsize = 10, fontface = "bold"))
+        }
+        else {
+            grid.text(sprintf("%s", heatmappval[i, j]), x, y, gp = gpar(fontsize = 10, fontface = "plain"))
+        }},
+        column_names_gp =  gpar(fontsize = 12, border=FALSE),
+        column_names_rot = 35,
+        row_names_gp = gpar(fontsize = 12, alpha = 0.75, border = FALSE))
+#draw(ht)
+dev.off()
+
+```
+
+# **Plot mean eigengene over developmental stages**
+
+View module eigengene data and make dataframe for Strader plots.
+
+```{r}
+head(MEs)
+names(MEs)
+Strader_MEs <- MEs
+Strader_MEs$sample <- metadataM$sample
+Strader_MEs$sample <- rownames(Strader_MEs)
+head(Strader_MEs)
+
+Strader_MEs<-Strader_MEs%>%
+  droplevels() #drop unused level
+
+dim(Strader_MEs)
+head(Strader_MEs)
+```
+
+Plot mean module eigengene for each module.
+
+```{r, echo=true}
+#convert wide format to long format for plotting  
+plot_MEs<-Strader_MEs%>%
+  gather(., key="Module", value="Mean", 1:26)
+
+write.csv(plot_MEs, "~/github/oyster-lnc/output/12-WGCNA-lncRNA/M_plotMEs")
+```
+
+```{r}
+# module_list<-c(levels(as.factor(data$Module)))
+# # loop through each compound in the list and create a plot
+# for (i in module_list) {
+#   # subset the fractions dataset for the current compound
+#   module_data <- subset(data, Module == i)
+# 
+# expression_plots<-plot_MEs%>%
+#   group_by(Module, sample) %>%
+#   ggplot(aes(x=sample, y=Mean, group=sample, colour=sample)) +
+#   facet_wrap(~ Module)+
+#   geom_jitter(alpha = 0.5) +
+#   geom_boxplot(alpha=0) +
+#   ylab("Mean Module Eigenegene") +
+#   geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+#   theme_bw() + 
+#   theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+#         axis.title.x=element_text(size = 14), #set x-axis title size
+#         axis.ticks.x=element_blank(), #No x-label ticks
+#         #axis.title.y=element_blank(), #No y-axis title
+#         axis.text.y=element_text(size = 14), #set y-axis label size, 
+#         panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+#         panel.grid.major = element_blank(), #Set major gridlines
+#         panel.grid.minor = element_blank(), #Set minor gridlines
+#         axis.line = element_line(colour = "black"), #Set axes color
+#         plot.background=element_blank(),
+#         plot.title = element_text(size=22)); expression_plots
+# 
+# ggsave(expression_plots, file="~/github/oyster-lnc/output/expression_eigengene.jpeg", height=8, width=10)
+
+```
+
+
+
+```{r}
+library(ggplot2)
+# module_list<-c(levels(as.factor(plot_MEs$Module)))
+
+# we tried to run this as a loop, but Raven didn't like the ggsave part. So this chunk can be used to look at specific genes of interest and save them manually. 
+
+#force to do only one 
+#module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
+
+# loop through each compound in the list and create a plot
+#for (i in module_list) {
+  # subset the fractions dataset for the current compound
+  #module_data <- subset(plot_MEs, Module == i)
+
+#module_data<-subset(plot_MEs, Module %in% module_list)
+
+expression_plot<-plot_MEs %>%
+  ggplot(aes(x=sample, y=Mean)) +
+  facet_wrap(~Module, ncol=5)+
+  geom_point(alpha = 0.5) +
+  ylab("Mean Module Eigenegene") +
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+        axis.title.x=element_text(size = 14), #set x-axis title size
+        axis.ticks.x=element_blank(), #No x-label ticks
+        #axis.title.y=element_blank(), #No y-axis title
+        axis.text.y=element_text(size = 14), #set y-axis label size,
+        panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+        panel.grid.major = element_blank(), #Set major gridlines
+        panel.grid.minor = element_blank(), #Set minor gridlines
+        axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank(),
+        plot.title = element_text(size=22));expression_plot
+
+pdf(file="~/github/oyster-lnc/output/M_expression_plot.pdf", width = 12, height = 12)
+expression_plot
+dev.off()
+
+#ggsave(filename=paste0("/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/module-plots/", i, ".jpeg"), plot=expression_plot, width=4, height=4, units="in")
+
+#}
+```
+
+Make plot by treatment. 
+```{r}
+# assign treatment from metadata 
+plot_MEs_treat<-plot_MEs
+plot_MEs_treat$treatment<-metadataF$treatment[match(plot_MEs_treat$sample, metadataM$sample)]
+
+# make a plot!
+
+#force to do only one 
+#module_list<-c("MEgreen1", "MEmediumorchid3", "MEhotpink3", "MEpaleturquoise4")
+
+#module_data_treat<-subset(plot_MEs_treat, Module %in% module_list)
+
+expression_plot_treatment<-plot_MEs_treat%>%
+  ggplot(aes(x=treatment, y=Mean)) +
+  facet_wrap(~Module, ncol=5)+
+  geom_jitter(alpha = 0.5) +
+  geom_boxplot(aes(colour=treatment), outlier.size = 0)+
+  ylab("Mean Module Eigenegene") +
+  scale_colour_manual(values=c("blue", "red"))+
+  geom_hline(yintercept = 0, linetype="dashed", color = "grey")+
+  theme_bw() +
+  theme(axis.text.x=element_text(angle = 45, hjust=1, size = 12), #set x-axis label size
+        axis.title.x=element_text(size = 14), #set x-axis title size
+        axis.ticks.x=element_blank(), #No x-label ticks
+        #axis.title.y=element_blank(), #No y-axis title
+        axis.text.y=element_text(size = 14), #set y-axis label size,
+        panel.border = element_rect(color = "black", fill = NA, size = 1), #set border
+        panel.grid.major = element_blank(), #Set major gridlines
+        panel.grid.minor = element_blank(), #Set minor gridlines
+        axis.line = element_line(colour = "black"), #Set axes color
+        plot.background=element_blank(),
+        plot.title = element_text(size=22));expression_plot_treatment
+
+pdf(file="~/github/oyster-lnc/output/M_expression_plot_treatment.pdf", width = 12, height = 12)
+expression_plot_treatment
+dev.off()
+
+```
