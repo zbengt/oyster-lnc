@@ -48,16 +48,503 @@ lncRNA_count <- count_fasta_entries(fasta_file)
 cat("Total number of lncRNAs:", lncRNA_count, "\n")
 
 ```
+7247 lncRNAs
 
 Create BLAST database
 ```{bash}
 makeblastdb -in ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Cgigas/Cgigas-db
 
 ```
+### Crassostrea virginica
+
+Already have lncRNA FASTA located:
+~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+
+Create blast db
+```{bash}
+makeblastdb -in ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Cvirginica/Cvirginica-db
+```
 
 
+### Mizuhopecten yessoensis (Yesso scallop)
+
+Download RNA transcripts FASTA from NCBI
+```{bash}
+curl -o ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/113/885/GCF_002113885.1_ASM211388v2/GCF_002113885.1_ASM211388v2_rna.fna.gz
+
+gunzip ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna.gz
+
+```
+
+Create FASTA with only entries identified as ncRNA
+```{r}
+filter_ncRNA_entries <- function(input_fasta, output_fasta) {
+  con_in <- file(input_fasta, open = "r")
+  con_out <- file(output_fasta, open = "w")
+  
+  write_entry <- FALSE
+  
+  while (length(line <- readLines(con_in, n = 1, warn = FALSE)) > 0) {
+    if (startsWith(line, ">")) {
+      if (grepl("ncRNA$", line)) {
+        write_entry <- TRUE
+        writeLines(line, con_out)
+      } else {
+        write_entry <- FALSE
+      }
+    } else if (write_entry) {
+      writeLines(line, con_out)
+    }
+  }
+  
+  close(con_in)
+  close(con_out)
+}
+
+input_fasta <- "../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta"  # Replace with your desired output file path
+
+filter_ncRNA_entries(input_fasta, output_fasta)
+
+```
+
+Count lncRNAs
+```{bash}
+grep -c "^>" ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta
+
+```
+2203 lncRNAs
+
+Make blastdb
+```{bash}
+makeblastdb -in ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Myessoensis/Myessoensis-db
+
+```
+
+### Ruditapes philippanarum
+Download RNA transcripts FASTA from NCBI
+```{bash}
+curl -o ../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/026/571/515/GCF_026571515.1_ASM2657151v2/GCF_026571515.1_ASM2657151v2_rna.fna.gz
+```
+
+```{bash}
+gunzip ../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna.gz
+
+```
+
+Create FASTA with only entries identified as ncRNA
+```{r}
+filter_ncRNA_entries <- function(input_fasta, output_fasta) {
+  con_in <- file(input_fasta, open = "r")
+  con_out <- file(output_fasta, open = "w")
+  
+  write_entry <- FALSE
+  
+  while (length(line <- readLines(con_in, n = 1, warn = FALSE)) > 0) {
+    if (startsWith(line, ">")) {
+      if (grepl("ncRNA$", line)) {
+        write_entry <- TRUE
+        writeLines(line, con_out)
+      } else {
+        write_entry <- FALSE
+      }
+    } else if (write_entry) {
+      writeLines(line, con_out)
+    }
+  }
+  
+  close(con_in)
+  close(con_out)
+}
+
+input_fasta <- "../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta"  # Replace with your desired output file path
+
+filter_ncRNA_entries(input_fasta, output_fasta)
+
+```
+
+Count lncRNAs
+```{bash}
+grep -c "^>" ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta
+
+```
+5853 lncRNAs
+
+Make blastdb
+```{bash}
+makeblastdb -in ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Rphilippanarum/Rphilippanarum-db
+
+```
+
+### Mytilus trossulus
+
+Download RNA transcripts FASTA from NCBI
+```{bash}
+curl -o ../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/588/685/GCF_036588685.1_PNRI_Mtr1.1.1.hap1/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna.gz
+```
+
+```{bash}
+gunzip ../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna.gz
+
+```
+
+Create FASTA with only entries identified as ncRNA
+```{r}
+filter_ncRNA_entries <- function(input_fasta, output_fasta) {
+  con_in <- file(input_fasta, open = "r")
+  con_out <- file(output_fasta, open = "w")
+  
+  write_entry <- FALSE
+  
+  while (length(line <- readLines(con_in, n = 1, warn = FALSE)) > 0) {
+    if (startsWith(line, ">")) {
+      if (grepl("ncRNA$", line)) {
+        write_entry <- TRUE
+        writeLines(line, con_out)
+      } else {
+        write_entry <- FALSE
+      }
+    } else if (write_entry) {
+      writeLines(line, con_out)
+    }
+  }
+  
+  close(con_in)
+  close(con_out)
+}
+
+input_fasta <- "../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta"  # Replace with your desired output file path
+
+filter_ncRNA_entries(input_fasta, output_fasta)
+
+```
+
+Count lncRNAs
+```{bash}
+grep -c "^>" ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta
+
+```
+6173 lncRNAs
+
+Make blastdb
+```{bash}
+makeblastdb -in ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Mtrossulus/Mtrossulus-db
+
+```
+
+### New C gigas genome
+Download RNA transcripts FASTA from NCBI
+```{bash}
+curl -o ../data/14-comparative-BLASTs/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/963/853/765/GCF_963853765.1_xbMagGiga1.1/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz
+```
+
+```{bash}
+gunzip ~/github/oyster-lnc/data/14-comparative-BLASTs/magallana-gigas/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz
+
+```
+
+Create FASTA with only entries identified as ncRNA
+```{r}
+filter_ncRNA_entries <- function(input_fasta, output_fasta) {
+  con_in <- file(input_fasta, open = "r")
+  con_out <- file(output_fasta, open = "w")
+  
+  write_entry <- FALSE
+  
+  while (length(line <- readLines(con_in, n = 1, warn = FALSE)) > 0) {
+    if (startsWith(line, ">")) {
+      if (grepl("ncRNA$", line)) {
+        write_entry <- TRUE
+        writeLines(line, con_out)
+      } else {
+        write_entry <- FALSE
+      }
+    } else if (write_entry) {
+      writeLines(line, con_out)
+    }
+  }
+  
+  close(con_in)
+  close(con_out)
+}
+
+input_fasta <- "../data/14-comparative-BLASTs/magallana-gigas/GCF_963853765.1_xbMagGiga1.1_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta"  # Replace with your desired output file path
+
+filter_ncRNA_entries(input_fasta, output_fasta)
+
+```
+
+Count lncRNAs
+```{bash}
+grep -c "^>" ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta
+
+```
+7177 lncRNAs
+
+Make blastdb
+```{bash}
+makeblastdb -in ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Mgigas/Mgigas-db
+
+```
+### Merge FASTAs
+
+```{bash}
+cat ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta \
+    ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+    ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta \
+    > ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta
+    
+head ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta
+```
+
+## BLAST merged FASTA against each species database
+
+```{bash}
+### C gigas
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Cgigas/Cgigas-db \
+-out ../data/14-comparative-BLASTs/blast-results/Cgig.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Cgig.tab
+
+### C virginica
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Cvirginica/Cvirginica-db \
+-out ../data/14-comparative-BLASTs/blast-results/Cvir.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Cvir.tab
+
+### M yessoensis
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Myessoensis/Myessoensis-db \
+-out ../data/14-comparative-BLASTs/blast-results/Myes.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Myes.tab
+
+### R philippanarum
 
 
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Rphilippanarum/Rphilippanarum-db \
+-out ../data/14-comparative-BLASTs/blast-results/Rphi.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Rphi.tab
+
+### M trossulus
+
+
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Mtrossulus/Mtrossulus-db \
+-out ../data/14-comparative-BLASTs/blast-results/Mtro.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Mtro.tab
+
+### M gigas
+
+
+/home/shared/ncbi-blast-2.11.0+/bin/blastn \
+-task blastn \
+-query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
+-db ../data/14-comparative-BLASTs/blastdb/Mgigas/Mgigas-db \
+-out ../data/14-comparative-BLASTs/blast-results/Mgigas.tab \
+-evalue 1E-40 \
+-num_threads 40 \
+-max_target_seqs 1 \
+-max_hsps 1 \
+-outfmt 6
+
+wc -l ../data/14-comparative-BLASTs/blast-results/Mgigas.tab
+
+
+```
+
+### Merge BLAST results
+```{bash}
+cat ../data/14-comparative-BLASTs/blast-results/Cgig.tab \
+    ../data/14-comparative-BLASTs/blast-results/Cvir.tab \
+    ../data/14-comparative-BLASTs/blast-results/Myes.tab \
+    ../data/14-comparative-BLASTs/blast-results/Mtro.tab \
+    ../data/14-comparative-BLASTs/blast-results/Rphi.tab \
+    ../data/14-comparative-BLASTs/blast-results/Mgigas.tab \
+    > ../data/14-comparative-BLASTs/merged_blast_results.tab
+
+wc -l ../data/14-comparative-BLASTs/merged_blast_results.tab  
+head ../data/14-comparative-BLASTs/merged_blast_results.tab
+```
+
+### Put merged FASTA into tabular format
+```{bash}
+perl -e '$count=0; $len=0; while(<>) {s/\r?\n//; s/\t/ /g; if (s/^>//) { if ($. != 1) {print "\n"} s/ |$/\t/; $count++; $_ .= "\t";} else {s/ //g; $len += length($_)} print $_;} print "\n"; warn "\nConverted $count FASTA records in $. lines to tabular format\nTotal sequence length: $len\n\n";' \
+../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta > ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.tab
+```
+```{bash}
+perl -e '$count=0; $len=0; while(<>) {
+    s/\r?\n//;  # Remove newlines
+    s/\t/ /g;  # Replace tabs with spaces
+    if (s/^>//) {  # Process headers
+        if ($. != 1) {print "\n"}  # Add newline between records
+        s/ ?$//;  # Remove trailing space
+        $_ .= "\t";  # Append a single tab
+        $count++;
+    } else {  # Process sequences
+        s/ //g;  # Remove spaces
+        $len += length($_);
+    }
+    print $_;  # Print the processed line
+}
+print "\n";
+warn "\nConverted $count FASTA records in $. lines to tabular format\nTotal sequence length: $len\n\n";' \
+../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta > ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.tab
+
+```
+
+
+### Read in all the data
+
+```{r}
+query <- read.table("../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.tab", sep = '\t', header = FALSE, row.names=NULL)
+
+Cgig <- read.table("../data/14-comparative-BLASTs/blast-results/Cgig.tab", sep = '\t', header = FALSE, row.names=NULL)
+
+Myes <- read.table("../data/14-comparative-BLASTs/blast-results/Myes.tab", sep = '\t', header = FALSE, row.names=NULL)
+
+Mtro <- read.table("../data/14-comparative-BLASTs/blast-results/Mtro.tab", sep = '\t', header = FALSE, row.names=NULL)
+
+Rphi <- read.table("../data/14-comparative-BLASTs/blast-results/Rphi.tab", sep = '\t', header = FALSE, row.names=NULL)
+
+Mgigas <- read.table("../data/14-comparative-BLASTs/blast-results/Mgigas.tab", sep = '\t', header = FALSE, row.names=NULL)
+```
+
+### Join tables
+
+Deduplicate
+
+```{r}
+query <- query %>% distinct(V1, .keep_all = TRUE)
+Cgig <- Cgig %>% distinct(V1, .keep_all = TRUE)
+Myes <- Myes %>% distinct(V1, .keep_all = TRUE)
+Mtro <- Mtro %>% distinct(V1, .keep_all = TRUE)
+Rphi <- Rphi %>% distinct(V1, .keep_all = TRUE)
+Mgigas <- Mgigas %>% distinct(V1, .keep_all = TRUE)
+
+```
+
+
+```{r}
+library(dplyr)
+joined_data <- query %>%
+  left_join(Cgig, by = "V1") %>%
+  left_join(Myes, by = "V1") %>%
+  left_join(Mtro, by = "V1") %>%
+  left_join(Rphi, by = "V1") %>%
+  left_join(Mgigas, by = "V1")
+
+colnames(joined_data)
+
+```
+
+```{r}
+step1 <- query %>% left_join(Cgig, by = "V1")
+colnames(step1)
+
+step2 <- step1 %>% left_join(Myes, by = "V1")
+colnames(step2)
+
+step3 <- step2 %>% left_join(Mtro, by = "V1")
+colnames(step3)
+
+step4 <- step3 %>% left_join(Rphi, by = "V1")
+colnames(step4)
+
+step5 <- step4 %>% left_join(Mgigas, by = "V1")
+colnames(step5)
+
+```
+
+```{r}
+comp <- step5 %>%
+  select(
+    V1, 
+    Cgig_hit = V2.x, Cgig_evalue = V11.x,
+    Myes_hit = V2.y, Myes_evalue = V11.y,
+    Mtro_hit = V2.x.x, Mtro_evalue = V11.x.x,
+    Rphi_hit = V2.y.y, Rphi_evalue = V11.y.y,
+    Mgigas_hit = V2, Mgigas_evalue = V11
+  ) %>%
+  rowwise() %>%
+  mutate(
+    Hits = sum(!is.na(c_across(c(Cgig_hit, Myes_hit, Mtro_hit, Rphi_hit, Mgigas_hit))))
+  )
+
+```
+
+
+```{r}
+library(dplyr)
+
+# Perform successive left joins starting with the `query` table
+comp <- query %>%
+  left_join(Cgig, by = "V1") %>%
+  left_join(Myes, by = "V1") %>%
+  left_join(Mtro, by = "V1") %>%
+  left_join(Rphi, by = "V1") %>%
+  left_join(Mgigas, by = "V1") %>%
+  select(
+    V1, 
+    Cgig_hit = V2.x, Cgig_evalue = V11.x,
+    Myes_hit = V2.y, Myes_evalue = V11.y,
+    Mtro_hit = V2.x.x, Mtro_evalue = V11.x.x,
+    Rphi_hit = V2.y.y, Rphi_evalue = V11.y.y,
+    Mgigas_hit = V2, Mgigas_evalue = V11
+  ) %>%
+  rowwise() %>%
+  mutate(
+    Hits = sum(!is.na(c_across(c(Cgig_hit, Myes_hit, Mtro_hit, Rphi_hit, Mgigas_hit))))
+  )
+
+
+```
 
 
 
