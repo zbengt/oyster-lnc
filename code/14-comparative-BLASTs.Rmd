@@ -11,19 +11,20 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # lncRNA FASTA retrieval
 
+No need to re-run, have updated version
 ### Crassostrea gigas
 This is retrieved from Roberts Lab genomic resources and I am unsure whether or not we want to use this one since it includes mitochondria
 
 Download GFF and FASTA
 ```{bash}
-curl -o ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_lncRNA.gff http://owl.fish.washington.edu/halfshell/genomic-databank/cgigas_uk_roslin_v1_lncRNA.gff
+curl -o ~/github/oyster-lnc/data/14-comparative-BLASTs/cgigas_uk_roslin_v1_lncRNA.gff http://owl.fish.washington.edu/halfshell/genomic-databank/cgigas_uk_roslin_v1_lncRNA.gff
 
-curl -o ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_genomic-mito.fa https://gannet.fish.washington.edu/panopea/Cg-roslin/cgigas_uk_roslin_v1_genomic-mito.fa
+curl -o ~/github/oyster-lnc/data/14-comparative-BLASTs/cgigas_uk_roslin_v1_genomic-mito.fa https://gannet.fish.washington.edu/panopea/Cg-roslin/cgigas_uk_roslin_v1_genomic-mito.fa
 ```
 
 Get lncRNA FASTA
 ```{bash}
-bedtools getfasta -fi ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_genomic-mito.fa -bed ../data/14-comparative-BLASTs/crassostrea-gigas/cgigas_uk_roslin_v1_lncRNA.gff -fo ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta
+bedtools getfasta -fi ~/github/oyster-lnc/data/14-comparative-BLASTs/cgigas_uk_roslin_v1_genomic-mito.fa -bed ~/github/oyster-lnc/data/14-comparative-BLASTs/cgigas_uk_roslin_v1_lncRNA.gff -fo ~/github/oyster-lnc/data/14-comparative-BLASTs/Cgigas_lncRNA.fasta
 
 ```
 
@@ -41,7 +42,7 @@ count_fasta_entries <- function(fasta_file) {
 }
 
 # Specify the path to your FASTA file
-fasta_file <- "../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta"
+fasta_file <- "~/github/oyster-lnc/data/14-comparative-BLASTs/Cgigas_lncRNA.fasta"
 
 # Count the entries and print the result
 lncRNA_count <- count_fasta_entries(fasta_file)
@@ -57,12 +58,19 @@ makeblastdb -in ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fa
 ```
 ### Crassostrea virginica
 
-Already have lncRNA FASTA located:
-~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+```{bash}
+curl -o ~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002022765.2_C_virginica-3.0_lncRNA.fa https://gannet.fish.washington.edu/Atumefaciens/20220217-cvir-lncRNA_subsetting/GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+```
+
+Count lncRNAs
+```{bash}
+grep -c "^>" ../data/14-comparative-BLASTs/GCF_002022765.2_C_virginica-3.0_lncRNA.fa
+
+```
 
 Create blast db
 ```{bash}
-makeblastdb -in ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Cvirginica/Cvirginica-db
+makeblastdb -in ~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002022765.2_C_virginica-3.0_lncRNA.fa -dbtype nucl -out ~/github/oyster-lnc/data/14-comparative-BLASTs/Cvirginica-db
 ```
 
 
@@ -70,9 +78,9 @@ makeblastdb -in ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.
 
 Download RNA transcripts FASTA from NCBI
 ```{bash}
-curl -o ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/113/885/GCF_002113885.1_ASM211388v2/GCF_002113885.1_ASM211388v2_rna.fna.gz
+curl -o ~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/002/113/885/GCF_002113885.1_ASM211388v2/GCF_002113885.1_ASM211388v2_rna.fna.gz
 
-gunzip ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna.gz
+gunzip ~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002113885.1_ASM211388v2_rna.fna.gz
 
 ```
 
@@ -101,8 +109,8 @@ filter_ncRNA_entries <- function(input_fasta, output_fasta) {
   close(con_out)
 }
 
-input_fasta <- "../data/14-comparative-BLASTs/mizuhopecten-yessoensis/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
-output_fasta <- "../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta"  # Replace with your desired output file path
+input_fasta <- "~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "~/github/oyster-lnc/data/14-comparative-BLASTs/Myessoensis_lncRNA.fasta"  # Replace with your desired output file path
 
 filter_ncRNA_entries(input_fasta, output_fasta)
 
@@ -110,25 +118,25 @@ filter_ncRNA_entries(input_fasta, output_fasta)
 
 Count lncRNAs
 ```{bash}
-grep -c "^>" ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta
+grep -c "^>" ../data/14-comparative-BLASTs/Myessoensis_lncRNA.fasta
 
 ```
 2203 lncRNAs
 
 Make blastdb
 ```{bash}
-makeblastdb -in ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Myessoensis/Myessoensis-db
+makeblastdb -in ../data/14-comparative-BLASTs/Myessoensis_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/Myessoensis-db
 
 ```
 
 ### Ruditapes philippanarum
 Download RNA transcripts FASTA from NCBI
 ```{bash}
-curl -o ../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/026/571/515/GCF_026571515.1_ASM2657151v2/GCF_026571515.1_ASM2657151v2_rna.fna.gz
+curl -o ../data/14-comparative-BLASTs/GCF_026571515.1_ASM2657151v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/026/571/515/GCF_026571515.1_ASM2657151v2/GCF_026571515.1_ASM2657151v2_rna.fna.gz
 ```
 
 ```{bash}
-gunzip ../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna.gz
+gunzip ../data/14-comparative-BLASTs/GCF_026571515.1_ASM2657151v2_rna.fna.gz
 
 ```
 
@@ -157,8 +165,8 @@ filter_ncRNA_entries <- function(input_fasta, output_fasta) {
   close(con_out)
 }
 
-input_fasta <- "../data/14-comparative-BLASTs/ruditapes-philippanarum/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
-output_fasta <- "../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta"  # Replace with your desired output file path
+input_fasta <- "../data/14-comparative-BLASTs/GCF_026571515.1_ASM2657151v2_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/Rphilippanarum_lncRNA.fasta"  # Replace with your desired output file path
 
 filter_ncRNA_entries(input_fasta, output_fasta)
 
@@ -166,14 +174,14 @@ filter_ncRNA_entries(input_fasta, output_fasta)
 
 Count lncRNAs
 ```{bash}
-grep -c "^>" ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta
+grep -c "^>" ../data/14-comparative-BLASTs/Rphilippanarum_lncRNA.fasta
 
 ```
 5853 lncRNAs
 
 Make blastdb
 ```{bash}
-makeblastdb -in ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Rphilippanarum/Rphilippanarum-db
+makeblastdb -in ../data/14-comparative-BLASTs/Rphilippanarum_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/Rphilippanarum-db
 
 ```
 
@@ -181,11 +189,11 @@ makeblastdb -in ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippan
 
 Download RNA transcripts FASTA from NCBI
 ```{bash}
-curl -o ../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/588/685/GCF_036588685.1_PNRI_Mtr1.1.1.hap1/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna.gz
+curl -o ../data/14-comparative-BLASTs/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna.gz https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/036/588/685/GCF_036588685.1_PNRI_Mtr1.1.1.hap1/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna.gz
 ```
 
 ```{bash}
-gunzip ../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna.gz
+gunzip ../data/14-comparative-BLASTs/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna.gz
 
 ```
 
@@ -214,8 +222,8 @@ filter_ncRNA_entries <- function(input_fasta, output_fasta) {
   close(con_out)
 }
 
-input_fasta <- "../data/14-comparative-BLASTs/mytilus-trossulus/GCF_002113885.1_ASM211388v2_rna.fna"  # Replace with your input FASTA file path
-output_fasta <- "../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta"  # Replace with your desired output file path
+input_fasta <- "../data/14-comparative-BLASTs/GCF_036588685.1_PNRI_Mtr1.1.1.hap1_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/Mtrossulus_lncRNA.fasta"  # Replace with your desired output file path
 
 filter_ncRNA_entries(input_fasta, output_fasta)
 
@@ -223,14 +231,14 @@ filter_ncRNA_entries(input_fasta, output_fasta)
 
 Count lncRNAs
 ```{bash}
-grep -c "^>" ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta
+grep -c "^>" ../data/14-comparative-BLASTs/Mtrossulus_lncRNA.fasta
 
 ```
 6173 lncRNAs
 
 Make blastdb
 ```{bash}
-makeblastdb -in ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Mtrossulus/Mtrossulus-db
+makeblastdb -in ../data/14-comparative-BLASTs/Mtrossulus_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/Mtrossulus-db
 
 ```
 
@@ -241,7 +249,7 @@ curl -o ../data/14-comparative-BLASTs/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz ht
 ```
 
 ```{bash}
-gunzip ~/github/oyster-lnc/data/14-comparative-BLASTs/magallana-gigas/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz
+gunzip ~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_963853765.1_xbMagGiga1.1_rna.fna.gz
 
 ```
 
@@ -270,8 +278,8 @@ filter_ncRNA_entries <- function(input_fasta, output_fasta) {
   close(con_out)
 }
 
-input_fasta <- "../data/14-comparative-BLASTs/magallana-gigas/GCF_963853765.1_xbMagGiga1.1_rna.fna"  # Replace with your input FASTA file path
-output_fasta <- "../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta"  # Replace with your desired output file path
+input_fasta <- "../data/14-comparative-BLASTs/GCF_963853765.1_xbMagGiga1.1_rna.fna"  # Replace with your input FASTA file path
+output_fasta <- "../data/14-comparative-BLASTs/Magallana_lncRNA.fasta"  # Replace with your desired output file path
 
 filter_ncRNA_entries(input_fasta, output_fasta)
 
@@ -279,25 +287,24 @@ filter_ncRNA_entries(input_fasta, output_fasta)
 
 Count lncRNAs
 ```{bash}
-grep -c "^>" ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta
+grep -c "^>" ../data/14-comparative-BLASTs/Magallana_lncRNA.fasta
 
 ```
 7177 lncRNAs
 
 Make blastdb
 ```{bash}
-makeblastdb -in ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/blastdb/Mgigas/Mgigas-db
+makeblastdb -in ../data/14-comparative-BLASTs/Magallana_lncRNA.fasta -dbtype nucl -out ../data/14-comparative-BLASTs/Mgigas-db
 
 ```
 ### Merge FASTAs
 
 ```{bash}
-cat ../data/14-comparative-BLASTs/crassostrea-gigas/Cgigas_lncRNA.fasta \
-    ~/github/oyster-lnc/data/01-lncRNA-kallisto/fasta/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
-    ../data/14-comparative-BLASTs/mizuhopecten-yessoensis/Myessoensis_lncRNA.fasta \
-    ../data/14-comparative-BLASTs/ruditapes-philippanarum/Rphilippanarum_lncRNA.fasta \
-    ../data/14-comparative-BLASTs/mytilus-trossulus/Mtrossulus_lncRNA.fasta \
-    ../data/14-comparative-BLASTs/magallana-gigas/Magallana_lncRNA.fasta \
+cat ../data/14-comparative-BLASTs/GCF_002022765.2_C_virginica-3.0_lncRNA.fa \
+    ../data/14-comparative-BLASTs/Myessoensis_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/Rphilippanarum_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/Mtrossulus_lncRNA.fasta \
+    ../data/14-comparative-BLASTs/Magallana_lncRNA.fasta \
     > ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta
     
 head ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta
@@ -306,47 +313,33 @@ head ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta
 ## BLAST merged FASTA against each species database
 
 ```{bash}
-### C gigas
-/home/shared/ncbi-blast-2.11.0+/bin/blastn \
--task blastn \
--query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Cgigas/Cgigas-db \
--out ../data/14-comparative-BLASTs/blast-results/Cgig.tab \
--evalue 1E-40 \
--num_threads 40 \
--max_target_seqs 1 \
--max_hsps 1 \
--outfmt 6
-
-wc -l ../data/14-comparative-BLASTs/blast-results/Cgig.tab
-
 ### C virginica
 /home/shared/ncbi-blast-2.11.0+/bin/blastn \
 -task blastn \
 -query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Cvirginica/Cvirginica-db \
--out ../data/14-comparative-BLASTs/blast-results/Cvir.tab \
+-db ../data/14-comparative-BLASTs/Cvirginica-db \
+-out ../data/14-comparative-BLASTs/Cvir.tab \
 -evalue 1E-40 \
 -num_threads 40 \
 -max_target_seqs 1 \
 -max_hsps 1 \
 -outfmt 6
 
-wc -l ../data/14-comparative-BLASTs/blast-results/Cvir.tab
+wc -l ../data/14-comparative-BLASTs/Cvir.tab
 
 ### M yessoensis
 /home/shared/ncbi-blast-2.11.0+/bin/blastn \
 -task blastn \
 -query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Myessoensis/Myessoensis-db \
--out ../data/14-comparative-BLASTs/blast-results/Myes.tab \
+-db ../data/14-comparative-BLASTs/Myessoensis-db \
+-out ../data/14-comparative-BLASTs/Myes.tab \
 -evalue 1E-40 \
 -num_threads 40 \
 -max_target_seqs 1 \
 -max_hsps 1 \
 -outfmt 6
 
-wc -l ../data/14-comparative-BLASTs/blast-results/Myes.tab
+wc -l ../data/14-comparative-BLASTs/Myes.tab
 
 ### R philippanarum
 
@@ -354,15 +347,15 @@ wc -l ../data/14-comparative-BLASTs/blast-results/Myes.tab
 /home/shared/ncbi-blast-2.11.0+/bin/blastn \
 -task blastn \
 -query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Rphilippanarum/Rphilippanarum-db \
--out ../data/14-comparative-BLASTs/blast-results/Rphi.tab \
+-db ../data/14-comparative-BLASTs/Rphilippanarum-db \
+-out ../data/14-comparative-BLASTs/Rphi.tab \
 -evalue 1E-40 \
 -num_threads 40 \
 -max_target_seqs 1 \
 -max_hsps 1 \
 -outfmt 6
 
-wc -l ../data/14-comparative-BLASTs/blast-results/Rphi.tab
+wc -l ../data/14-comparative-BLASTs/Rphi.tab
 
 ### M trossulus
 
@@ -370,15 +363,15 @@ wc -l ../data/14-comparative-BLASTs/blast-results/Rphi.tab
 /home/shared/ncbi-blast-2.11.0+/bin/blastn \
 -task blastn \
 -query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Mtrossulus/Mtrossulus-db \
--out ../data/14-comparative-BLASTs/blast-results/Mtro.tab \
+-db ../data/14-comparative-BLASTs/Mtrossulus-db \
+-out ../data/14-comparative-BLASTs/Mtro.tab \
 -evalue 1E-40 \
 -num_threads 40 \
 -max_target_seqs 1 \
 -max_hsps 1 \
 -outfmt 6
 
-wc -l ../data/14-comparative-BLASTs/blast-results/Mtro.tab
+wc -l ../data/14-comparative-BLASTs/Mtro.tab
 
 ### M gigas
 
@@ -386,15 +379,15 @@ wc -l ../data/14-comparative-BLASTs/blast-results/Mtro.tab
 /home/shared/ncbi-blast-2.11.0+/bin/blastn \
 -task blastn \
 -query ../data/14-comparative-BLASTs/merged_bivalve_lncRNAs.fasta \
--db ../data/14-comparative-BLASTs/blastdb/Mgigas/Mgigas-db \
--out ../data/14-comparative-BLASTs/blast-results/Mgigas.tab \
+-db ../data/14-comparative-BLASTs/Mgigas-db \
+-out ../data/14-comparative-BLASTs/Mgigas.tab \
 -evalue 1E-40 \
 -num_threads 40 \
 -max_target_seqs 1 \
 -max_hsps 1 \
 -outfmt 6
 
-wc -l ../data/14-comparative-BLASTs/blast-results/Mgigas.tab
+wc -l ../data/14-comparative-BLASTs/Mgigas.tab
 
 
 ```

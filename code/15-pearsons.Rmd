@@ -1,0 +1,224 @@
+---
+title: "15-pearsons"
+author: "Zach Bengtsson"
+date: "2025-11-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Packages
+
+```{r}
+# Packages (only base + tidyverse)
+library(tidyverse)
+
+```
+
+### Import Data
+
+```{r}
+
+# Where you want the matrices to live (change this!)
+data_dir <- "~/github/oyster-lnc/data/15-pearsons"
+
+# URLs or paths to your matrices (replace with your real links)
+lnc_url  <- "https://raw.githubusercontent.com/zbengt/oyster-lnc/refs/heads/main/output/10-count-matrices-DESeq2-final/kallisto-count-matrix/Cvirg_lncRNA_count_matrix.isoform.counts.matrix"
+mrna_url <- "https://raw.githubusercontent.com/sr320/ceabigr/refs/heads/main/output/34-transcript-counts/transcript_counts_per_gene_per_sample.csv"
+
+# Filenames to save as inside dest_dir
+lnc_file  <- file.path(data_dir, "lnc_counts.tsv")
+mrna_file <- file.path(data_dir, "mrna_counts.tsv")
+
+if (!file.exists(lnc_file)) {
+  message("Downloading lncRNA matrix to: ", lnc_file)
+  download.file(lnc_url, destfile = lnc_file, mode = "wb")
+} else {
+  message("Using existing lncRNA matrix at: ", lnc_file)
+}
+
+if (!file.exists(mrna_file)) {
+  message("Downloading mRNA matrix to: ", mrna_file)
+  download.file(mrna_url, destfile = mrna_file, mode = "wb")
+} else {
+  message("Using existing mRNA matrix at: ", mrna_file)
+}
+
+lnc_raw <- readr::read_tsv(lnc_file)
+mrna_raw <- readr::read_tsv(mrna_file)
+
+### load matrices
+
+## lncRNA
+lnc_raw <- readr::read_tsv(lnc_file, show_col_types = FALSE)
+
+# First column is called `...1` -> rename to gene_id
+lnc_raw <- lnc_raw %>%
+  rename(gene_id = `...1`)
+
+lnc_mat <- lnc_raw %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+
+## mRNA
+
+# This file is comma-separated
+mrna_raw <- readr::read_csv(mrna_file, show_col_types = FALSE)
+
+# First column should be gene_name; the rest include transcript_counts.* and summary columns
+# 1) rename gene_name -> gene_id
+# 2) keep only the transcript count columns
+mrna_counts <- mrna_raw %>%
+  rename(gene_id = gene_name) %>%
+  select(gene_id, starts_with("transcript_counts."))
+
+# 3) strip the "transcript_counts." prefix so sample names match lnc_mat (S12M, S13M, ...)
+colnames(mrna_counts)[-1] <- sub("^transcript_counts\\.", "", colnames(mrna_counts)[-1])
+
+mrna_mat <- mrna_counts %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+
+```
+```{r}
+# sanity check
+
+head(colnames(lnc_mat))
+head(colnames(mrna_mat))
+```
+
+
+### Align Samples Across Matrices
+
+```{r}
+common_samples <- intersect(colnames(lnc_mat), colnames(mrna_mat))
+
+lnc_mat <- lnc_mat[, common_samples, drop = FALSE]
+mrna_mat <- mrna_mat[, common_samples, drop = FALSE]
+
+n_samples <- length(common_samples)  # should be 26
+print(n_samples)
+```
+
+### Filter out low expression transcripts
+
+```{r}
+# standard filtering at this stage
+min_count   <- 10
+min_samples <- 2
+
+filter_rows <- function(mat, min_count, min_samples) {
+  keep <- rowSums(mat >= min_count) >= min_samples
+  mat[keep, , drop = FALSE]
+}
+
+lnc_mat_f <- filter_rows(lnc_mat,  min_count, min_samples)
+mrna_mat_f <- filter_rows(mrna_mat, min_count, min_samples)
+
+```
+
+### Log Scale Counts Transformation
+
+```{r}
+lnc_log  <- log2(lnc_mat_f + 1)
+mrna_log <- log2(mrna_mat_f + 1)
+
+```
+
+### Pearson correlation matrix
+
+```{r}
+# rows = lncRNAs, cols = mRNAs
+cor_mat <- cor(t(lnc_log),
+               t(mrna_log),
+               method = "pearson",
+               use = "pairwise.complete.obs")
+
+```
+
+### Comput p-values and FDRs for all pairs
+
+```{r}
+# element-wise
+# Handle edge case |r| == 1 to avoid division by zero
+r_vals <- cor_mat
+
+# Clip slightly if needed
+r_vals[r_vals >  0.999999] <-  0.999999
+r_vals[r_vals < -0.999999] <- -0.999999
+
+t_vals <- r_vals * sqrt((n_samples - 2) / (1 - r_vals^2))
+p_vals <- 2 * pt(-abs(t_vals), df = n_samples - 2)
+
+#Now flatten matrices into a long table and do BH FDR correction
+lnc_ids  <- rownames(cor_mat)
+mrna_ids <- colnames(cor_mat)
+
+coexp_df <- as.data.frame(as.table(cor_mat)) %>%
+  as_tibble() %>%
+  rename(lnc_id = Var1,
+         mrna_id = Var2,
+         r      = Freq)
+
+# match p-values into the same long format
+p_df <- as.data.frame(as.table(p_vals)) %>%
+  as_tibble() %>%
+  rename(lnc_id = Var1,
+         mrna_id = Var2,
+         p_value = Freq)
+
+coexp_df <- coexp_df %>%
+  left_join(p_df, by = c("lnc_id", "mrna_id"))
+
+# Global FDR across all pairs
+coexp_df <- coexp_df %>%
+  mutate(FDR = p.adjust(p_value, method = "BH"))
+
+
+```
+
+### Find significant pairs
+```{r}
+#Using common thresholds of significance
+## |r| ≥ 0.8
+## FDR < 0.05
+
+r_threshold   <- 0.8
+fdr_threshold <- 0.05
+
+sig_pairs <- coexp_df %>%
+  filter(abs(r) >= r_threshold,
+         FDR <= fdr_threshold) %>%
+  arrange(FDR, desc(abs(r)))
+
+# Inspect top hits
+print(sig_pairs %>% head())
+
+```
+
+### Export file for visualization in cytoscape
+
+```{r}
+readr::write_tsv(sig_pairs,
+                 "~/github/oyster-lnc/output/15-pearsons/lnc_mrna_coexpression_edges.tsv")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

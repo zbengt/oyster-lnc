@@ -1,0 +1,636 @@
+---
+title: "16-BRH-blast-comparison"
+author: "Zach Bengtsson"
+date: "2026-03-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Best reciprocal hit (BRH) analysis for *Crassostrea virginica* lncRNAs
+
+This notebook identifies best reciprocal hit (BRH) relationships between *Crassostrea virginica* lncRNAs and lncRNA datasets from other bivalve species using relaxed similarity thresholds appropriate for lncRNAs. It uses explicit BLAST executable paths for reproducibility on HPC systems.
+
+## Libraries and directories
+
+```{r}
+library(tidyverse)
+library(Biostrings)
+library(purrr)
+
+data_dir  <- "~/github/oyster-lnc/data/14-comparative-BLASTs"
+blast_dir <- "~/github/oyster-lnc/output/16-BRH-blast-comparison/blast"
+out_dir   <- "~/github/oyster-lnc/output/16-BRH-blast-comparison/tables"
+fasta_dir <- "~/github/oyster-lnc/output/16-BRH-blast-comparison/fastas"
+
+dir.create(path.expand(blast_dir), showWarnings = FALSE, recursive = TRUE)
+dir.create(path.expand(out_dir),   showWarnings = FALSE, recursive = TRUE)
+dir.create(path.expand(fasta_dir), showWarnings = FALSE, recursive = TRUE)
+```
+
+## Species metadata
+
+```{r}
+species_meta <- tibble::tribble(
+  ~species,           ~label,                     ~fasta,
+  "Cvir",             "Crassostrea virginica",    "~/github/oyster-lnc/data/14-comparative-BLASTs/GCF_002022765.2_C_virginica-3.0_lncRNA.fa",
+  "Cgigas_roslin",    "Crassostrea gigas",        "~/github/oyster-lnc/data/14-comparative-BLASTs/Cgigas_lncRNA.fasta",
+  "Mgigas_new",       "Magallana gigas",          "~/github/oyster-lnc/data/14-comparative-BLASTs/Magallana_lncRNA.fasta",
+  "Myessoensis",      "Mizuhopecten yessoensis",  "~/github/oyster-lnc/data/14-comparative-BLASTs/Myessoensis_lncRNA.fasta",
+  "Rphilippinarum",   "Ruditapes philippinarum",  "~/github/oyster-lnc/data/14-comparative-BLASTs/Rphilippanarum_lncRNA.fasta",
+  "Mtrossulus",       "Mytilus trossulus",        "~/github/oyster-lnc/data/14-comparative-BLASTs/Mtrossulus_lncRNA.fasta"
+) %>%
+  dplyr::mutate(fasta = path.expand(fasta))
+
+species_meta
+```
+
+## Relaxed BRH thresholds
+
+```{r}
+PIDENT_MIN <- 50
+QCOV_MIN   <- 0.30
+EVALUE_MAX <- 1e-5
+```
+
+## Helper functions
+
+### Read FASTA lengths
+
+```{r}
+get_lnc_lengths <- function(fasta_path) {
+  dna <- Biostrings::readDNAStringSet(fasta_path)
+
+  tibble(
+    seq_id    = names(dna),
+    length_nt = as.integer(width(dna))
+  )
+}
+```
+
+### Read FASTA with names preserved
+
+```{r}
+read_lnc_fasta <- function(fasta_path) {
+  Biostrings::readDNAStringSet(fasta_path)
+}
+```
+
+### Parse BLAST output and retain best hit per query
+
+```{r}
+read_blast_best_hits <- function(path,
+                                 pident_min = PIDENT_MIN,
+                                 qcov_min   = QCOV_MIN,
+                                 evalue_max = EVALUE_MAX) {
+  empty <- tibble(
+    qseqid   = character(),
+    sseqid   = character(),
+    pident   = numeric(),
+    aln_len  = integer(),
+    qlen     = integer(),
+    slen     = integer(),
+    evalue   = numeric(),
+    bitscore = numeric(),
+    qcov     = numeric()
+  )
+
+  if (!file.exists(path)) {
+    warning("BLAST file not found: ", path)
+    return(empty)
+  }
+
+  x <- readr::read_tsv(
+    path,
+    col_names = c("qseqid", "sseqid", "pident",
+                  "aln_len", "qlen", "slen", "evalue", "bitscore"),
+    show_col_types = FALSE
+  )
+
+  if (nrow(x) == 0) {
+    warning("BLAST file is empty: ", path)
+    return(empty)
+  }
+
+  x %>%
+    dplyr::mutate(qcov = aln_len / qlen) %>%
+    dplyr::filter(
+      pident >= pident_min,
+      qcov   >= qcov_min,
+      evalue <= evalue_max
+    ) %>%
+    dplyr::group_by(qseqid) %>%
+    dplyr::arrange(
+      dplyr::desc(bitscore),
+      evalue,
+      dplyr::desc(qcov),
+      .by_group = TRUE
+    ) %>%
+    dplyr::slice(1) %>%
+    dplyr::ungroup()
+}
+```
+
+### Identify best reciprocal hit pairs
+
+```{r}
+get_brh_pairs <- function(q_to_s, s_to_q, q_species, s_species) {
+  dplyr::inner_join(
+    q_to_s %>% dplyr::select(qseqid, sseqid),
+    s_to_q %>% dplyr::select(qseqid, sseqid),
+    by = c("qseqid" = "sseqid", "sseqid" = "qseqid")
+  ) %>%
+    dplyr::transmute(
+      !!q_species := qseqid,
+      !!s_species := sseqid
+    )
+}
+```
+
+### Enforce unique 1:1 relationships
+
+```{r}
+enforce_one_to_one <- function(df, col1, col2) {
+  col1 <- rlang::ensym(col1)
+  col2 <- rlang::ensym(col2)
+
+  df %>%
+    dplyr::add_count(!!col1, name = "n1") %>%
+    dplyr::add_count(!!col2, name = "n2") %>%
+    dplyr::filter(n1 == 1, n2 == 1) %>%
+    dplyr::select(-n1, -n2)
+}
+```
+
+### Write FASTA subsets
+
+```{r}
+write_subset_fasta <- function(dna, ids, outfile, prefix = NULL) {
+  keep <- ids[ids %in% names(dna)]
+  x <- dna[keep]
+
+  if (!is.null(prefix)) {
+    names(x) <- paste0(prefix, "_", names(x))
+  }
+
+  Biostrings::writeXStringSet(x, outfile)
+}
+```
+
+## Check BLAST installation
+
+```{bash}
+BLAST=/home/shared/ncbi-blast-2.11.0+/bin
+"$BLAST/blastn" -version
+"$BLAST/makeblastdb" -version
+```
+
+## Build BLAST databases
+
+```{bash}
+BLAST=/home/shared/ncbi-blast-2.11.0+/bin
+DATA_DIR=~/github/oyster-lnc/data/14-comparative-BLASTs
+BLAST_DIR=~/github/oyster-lnc/output/16-BRH-blast-comparison/blast
+
+mkdir -p "$BLAST_DIR"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Cvir_db"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/Cgigas_lncRNA.fasta" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Cgigas_roslin_db"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/Magallana_lncRNA.fasta" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Mgigas_new_db"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/Myessoensis_lncRNA.fasta" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Myessoensis_db"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/Rphilippanarum_lncRNA.fasta" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Rphilippinarum_db"
+
+"$BLAST/makeblastdb" \
+  -in "$DATA_DIR/Mtrossulus_lncRNA.fasta" \
+  -dbtype nucl \
+  -out "$BLAST_DIR/Mtrossulus_db"
+```
+
+## Run pairwise reciprocal BLASTn comparisons
+
+```{bash}
+BLAST=/home/shared/ncbi-blast-2.11.0+/bin
+DATA_DIR=~/github/oyster-lnc/data/14-comparative-BLASTs
+BLAST_DIR=~/github/oyster-lnc/output/16-BRH-blast-comparison/blast
+
+mkdir -p "$BLAST_DIR"
+
+# C. virginica as query against each comparison species
+"$BLAST/blastn" \
+  -query "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -db "$BLAST_DIR/Cgigas_roslin_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Cgigas_roslin.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -db "$BLAST_DIR/Mgigas_new_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Mgigas_new.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -db "$BLAST_DIR/Myessoensis_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Myessoensis.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -db "$BLAST_DIR/Rphilippinarum_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Rphilippinarum.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa" \
+  -db "$BLAST_DIR/Mtrossulus_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Mtrossulus.blastn.tsv"
+
+# Reciprocal searches back to C. virginica
+"$BLAST/blastn" \
+  -query "$DATA_DIR/Cgigas_lncRNA.fasta" \
+  -db "$BLAST_DIR/Cvir_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cgigas_roslin_vs_Cvir.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/Magallana_lncRNA.fasta" \
+  -db "$BLAST_DIR/Cvir_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Mgigas_new_vs_Cvir.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/Myessoensis_lncRNA.fasta" \
+  -db "$BLAST_DIR/Cvir_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Myessoensis_vs_Cvir.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/Rphilippanarum_lncRNA.fasta" \
+  -db "$BLAST_DIR/Cvir_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Rphilippinarum_vs_Cvir.blastn.tsv"
+
+"$BLAST/blastn" \
+  -query "$DATA_DIR/Mtrossulus_lncRNA.fasta" \
+  -db "$BLAST_DIR/Cvir_db" \
+  -evalue 1e-5 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Mtrossulus_vs_Cvir.blastn.tsv"
+```
+
+## Read BLAST tables and retain best hits
+
+```{r}
+cvir_vs_cgigas1 <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cvir_vs_Cgigas_roslin.blastn.tsv"))
+cgigas1_vs_cvir <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cgigas_roslin_vs_Cvir.blastn.tsv"))
+
+cvir_vs_cgigas2 <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cvir_vs_Mgigas_new.blastn.tsv"))
+cgigas2_vs_cvir <- read_blast_best_hits(file.path(path.expand(blast_dir), "Mgigas_new_vs_Cvir.blastn.tsv"))
+
+cvir_vs_myes <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cvir_vs_Myessoensis.blastn.tsv"))
+myes_vs_cvir <- read_blast_best_hits(file.path(path.expand(blast_dir), "Myessoensis_vs_Cvir.blastn.tsv"))
+
+cvir_vs_rphi <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cvir_vs_Rphilippinarum.blastn.tsv"))
+rphi_vs_cvir <- read_blast_best_hits(file.path(path.expand(blast_dir), "Rphilippinarum_vs_Cvir.blastn.tsv"))
+
+cvir_vs_mtro <- read_blast_best_hits(file.path(path.expand(blast_dir), "Cvir_vs_Mtrossulus.blastn.tsv"))
+mtro_vs_cvir <- read_blast_best_hits(file.path(path.expand(blast_dir), "Mtrossulus_vs_Cvir.blastn.tsv"))
+```
+
+## Build BRH tables
+
+```{r}
+brh_Cvir_Cgigas_roslin  <- get_brh_pairs(cvir_vs_cgigas1, cgigas1_vs_cvir, "Cvir", "Cgigas_roslin")
+brh_Cvir_Mgigas_new     <- get_brh_pairs(cvir_vs_cgigas2, cgigas2_vs_cvir, "Cvir", "Mgigas_new")
+brh_Cvir_Myessoensis    <- get_brh_pairs(cvir_vs_myes, myes_vs_cvir, "Cvir", "Myessoensis")
+brh_Cvir_Rphilippinarum <- get_brh_pairs(cvir_vs_rphi, rphi_vs_cvir, "Cvir", "Rphilippinarum")
+brh_Cvir_Mtrossulus     <- get_brh_pairs(cvir_vs_mtro, mtro_vs_cvir, "Cvir", "Mtrossulus")
+```
+
+## Enforce unique 1:1 BRH relationships
+
+```{r}
+brh_Cvir_Cgigas_roslin_1to1  <- enforce_one_to_one(brh_Cvir_Cgigas_roslin,  Cvir, Cgigas_roslin)
+brh_Cvir_Mgigas_new_1to1     <- enforce_one_to_one(brh_Cvir_Mgigas_new,     Cvir, Mgigas_new)
+brh_Cvir_Myessoensis_1to1    <- enforce_one_to_one(brh_Cvir_Myessoensis,    Cvir, Myessoensis)
+brh_Cvir_Rphilippinarum_1to1 <- enforce_one_to_one(brh_Cvir_Rphilippinarum, Cvir, Rphilippinarum)
+brh_Cvir_Mtrossulus_1to1     <- enforce_one_to_one(brh_Cvir_Mtrossulus,     Cvir, Mtrossulus)
+```
+
+## Summary table: number of BRH hits with *C. virginica* by species
+
+```{r}
+brh_count_table <- tibble::tribble(
+  ~comparison_species,        ~n_brh_pairs,                     ~n_brh_pairs_1to1,                     ~n_unique_Cvir_lncRNAs,
+  "Crassostrea gigas",        nrow(brh_Cvir_Cgigas_roslin),     nrow(brh_Cvir_Cgigas_roslin_1to1),     dplyr::n_distinct(brh_Cvir_Cgigas_roslin_1to1$Cvir),
+  "Magallana gigas",          nrow(brh_Cvir_Mgigas_new),        nrow(brh_Cvir_Mgigas_new_1to1),        dplyr::n_distinct(brh_Cvir_Mgigas_new_1to1$Cvir),
+  "Mizuhopecten yessoensis",  nrow(brh_Cvir_Myessoensis),       nrow(brh_Cvir_Myessoensis_1to1),       dplyr::n_distinct(brh_Cvir_Myessoensis_1to1$Cvir),
+  "Ruditapes philippinarum",  nrow(brh_Cvir_Rphilippinarum),    nrow(brh_Cvir_Rphilippinarum_1to1),    dplyr::n_distinct(brh_Cvir_Rphilippinarum_1to1$Cvir),
+  "Mytilus trossulus",        nrow(brh_Cvir_Mtrossulus),        nrow(brh_Cvir_Mtrossulus_1to1),        dplyr::n_distinct(brh_Cvir_Mtrossulus_1to1$Cvir)
+)
+
+brh_count_table
+
+readr::write_tsv(
+  brh_count_table,
+  file.path(path.expand(out_dir), "Cvir_BRH_counts_by_species.tsv")
+)
+```
+
+## Focal *C. virginica* membership across comparison species
+
+```{r}
+cvir_all <- get_lnc_lengths(
+  species_meta$fasta[species_meta$species == "Cvir"]
+) %>%
+  dplyr::pull(seq_id) %>%
+  unique()
+
+membership_cvir <- tibble::tibble(
+  Cvir = cvir_all
+) %>%
+  dplyr::mutate(
+    in_Cgigas_roslin   = Cvir %in% brh_Cvir_Cgigas_roslin_1to1$Cvir,
+    in_Mgigas_new      = Cvir %in% brh_Cvir_Mgigas_new_1to1$Cvir,
+    in_Myessoensis     = Cvir %in% brh_Cvir_Myessoensis_1to1$Cvir,
+    in_Rphilippinarum  = Cvir %in% brh_Cvir_Rphilippinarum_1to1$Cvir,
+    in_Mtrossulus      = Cvir %in% brh_Cvir_Mtrossulus_1to1$Cvir,
+    n_species_shared   = rowSums(dplyr::across(dplyr::starts_with("in_"))),
+    sharing_class      = dplyr::case_when(
+      n_species_shared == 0 ~ "Cvir_only",
+      n_species_shared == 1 ~ "shared_with_one_species",
+      n_species_shared >= 2 ~ "shared_with_multiple_species"
+    )
+  )
+
+membership_cvir %>%
+  dplyr::count(sharing_class)
+
+readr::write_tsv(
+  membership_cvir,
+  file.path(path.expand(out_dir), "Cvir_membership_across_species.tsv")
+)
+```
+
+## Write FASTAs of BRH-supported *C. virginica* sequences
+
+```{r}
+cvir_dna <- read_lnc_fasta(
+  species_meta$fasta[species_meta$species == "Cvir"]
+)
+
+write_subset_fasta(
+  cvir_dna,
+  brh_Cvir_Cgigas_roslin_1to1$Cvir,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_with_Cgigas_roslin.fasta"),
+  prefix = "Cvir"
+)
+
+write_subset_fasta(
+  cvir_dna,
+  brh_Cvir_Mgigas_new_1to1$Cvir,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_with_Mgigas_new.fasta"),
+  prefix = "Cvir"
+)
+
+write_subset_fasta(
+  cvir_dna,
+  brh_Cvir_Myessoensis_1to1$Cvir,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_with_Myessoensis.fasta"),
+  prefix = "Cvir"
+)
+
+write_subset_fasta(
+  cvir_dna,
+  brh_Cvir_Rphilippinarum_1to1$Cvir,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_with_Rphilippinarum.fasta"),
+  prefix = "Cvir"
+)
+
+write_subset_fasta(
+  cvir_dna,
+  brh_Cvir_Mtrossulus_1to1$Cvir,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_with_Mtrossulus.fasta"),
+  prefix = "Cvir"
+)
+
+cvir_shared_any <- membership_cvir %>%
+  dplyr::filter(n_species_shared >= 1) %>%
+  dplyr::pull(Cvir)
+
+write_subset_fasta(
+  cvir_dna,
+  cvir_shared_any,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_shared_with_any_species.fasta"),
+  prefix = "Cvir"
+)
+
+cvir_shared_multi <- membership_cvir %>%
+  dplyr::filter(n_species_shared >= 2) %>%
+  dplyr::pull(Cvir)
+
+write_subset_fasta(
+  cvir_dna,
+  cvir_shared_multi,
+  file.path(path.expand(fasta_dir), "Cvir_BRH_shared_with_multiple_species.fasta"),
+  prefix = "Cvir"
+)
+```
+
+## Export individual BRH tables
+
+```{r}
+readr::write_tsv(brh_Cvir_Cgigas_roslin_1to1,  file.path(path.expand(out_dir), "BRH_Cvir_Cgigas_roslin_1to1.tsv"))
+readr::write_tsv(brh_Cvir_Mgigas_new_1to1,     file.path(path.expand(out_dir), "BRH_Cvir_Mgigas_new_1to1.tsv"))
+readr::write_tsv(brh_Cvir_Myessoensis_1to1,    file.path(path.expand(out_dir), "BRH_Cvir_Myessoensis_1to1.tsv"))
+readr::write_tsv(brh_Cvir_Rphilippinarum_1to1, file.path(path.expand(out_dir), "BRH_Cvir_Rphilippinarum_1to1.tsv"))
+readr::write_tsv(brh_Cvir_Mtrossulus_1to1,     file.path(path.expand(out_dir), "BRH_Cvir_Mtrossulus_1to1.tsv"))
+```
+
+## Session info
+
+```{r}
+sessionInfo()
+```
+
+## Basic BLASTs
+
+```{bash}
+BLAST=/home/shared/ncbi-blast-2.11.0+/bin
+DATA_DIR=~/github/oyster-lnc/data/14-comparative-BLASTs
+BLAST_DIR=~/github/oyster-lnc/output/16-BRH-blast-comparison/blast
+
+QUERY="$DATA_DIR/GCF_002022765.2_C_virginica-3.0_lncRNA.fa"
+
+"$BLAST/blastn" \
+  -query "$QUERY" \
+  -db "$BLAST_DIR/Cgigas_roslin_db" \
+  -evalue 1e-40 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Cgigas_roslin.strict_e40.tsv"
+
+"$BLAST/blastn" \
+  -query "$QUERY" \
+  -db "$BLAST_DIR/Mgigas_new_db" \
+  -evalue 1e-40 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Mgigas_new.strict_e40.tsv"
+
+"$BLAST/blastn" \
+  -query "$QUERY" \
+  -db "$BLAST_DIR/Myessoensis_db" \
+  -evalue 1e-40 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Myessoensis.strict_e40.tsv"
+
+"$BLAST/blastn" \
+  -query "$QUERY" \
+  -db "$BLAST_DIR/Rphilippinarum_db" \
+  -evalue 1e-40 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Rphilippinarum.strict_e40.tsv"
+
+"$BLAST/blastn" \
+  -query "$QUERY" \
+  -db "$BLAST_DIR/Mtrossulus_db" \
+  -evalue 1e-40 \
+  -max_target_seqs 5 \
+  -outfmt "6 qseqid sseqid pident length qlen slen evalue bitscore" \
+  > "$BLAST_DIR/Cvir_vs_Mtrossulus.strict_e40.tsv"
+```
+
+## Helper to read outputs
+```{r}
+read_blast_table <- function(path, comparison_species) {
+  if (!file.exists(path) || file.info(path)$size == 0) {
+    return(
+      tibble(
+        qseqid = character(),
+        sseqid = character(),
+        pident = numeric(),
+        aln_len = integer(),
+        qlen = integer(),
+        slen = integer(),
+        evalue = numeric(),
+        bitscore = numeric(),
+        comparison_species = character(),
+        qcov = numeric()
+      )
+    )
+  }
+
+  readr::read_tsv(
+    path,
+    col_names = c(
+      "qseqid", "sseqid", "pident", "aln_len",
+      "qlen", "slen", "evalue", "bitscore"
+    ),
+    show_col_types = FALSE
+  ) %>%
+    dplyr::mutate(
+      comparison_species = comparison_species,
+      qcov = aln_len / qlen
+    )
+}
+```
+
+## Combined table of hits
+```{r}
+blast_hits_all <- dplyr::bind_rows(
+  read_blast_table(
+    file.path(path.expand(blast_dir), "Cvir_vs_Cgigas_roslin.strict_e40.tsv"),
+    "Crassostrea gigas"
+  ),
+  read_blast_table(
+    file.path(path.expand(blast_dir), "Cvir_vs_Mgigas_new.strict_e40.tsv"),
+    "Magallana gigas"
+  ),
+  read_blast_table(
+    file.path(path.expand(blast_dir), "Cvir_vs_Myessoensis.strict_e40.tsv"),
+    "Mizuhopecten yessoensis"
+  ),
+  read_blast_table(
+    file.path(path.expand(blast_dir), "Cvir_vs_Rphilippinarum.strict_e40.tsv"),
+    "Ruditapes philippinarum"
+  ),
+  read_blast_table(
+    file.path(path.expand(blast_dir), "Cvir_vs_Mtrossulus.strict_e40.tsv"),
+    "Mytilus trossulus"
+  )
+)
+
+blast_hits_all
+```
+
+## Save combined hits
+```{r}
+readr::write_tsv(
+  blast_hits_all,
+  file.path(path.expand(out_dir), "Cvir_vs_all_species_BLAST_hits_strict_e40.tsv")
+)
+```
+
+## Summary Table
+
+```{r}
+readr::write_tsv(
+  blast_hits_all,
+  file.path(path.expand(out_dir), "Cvir_vs_all_species_BLAST_hits_strict_e40.tsv")
+)
+
+print("Cvir_vs_all_species_BLAST_hits_strict_e40.tsv")
+```
+
+```{r}
+cvir_hit_summary <- blast_hits_all %>%
+  dplyr::count(comparison_species, name = "n_hits") %>%
+  dplyr::arrange(desc(n_hits))
+
+cvir_hit_summary
+```
+
