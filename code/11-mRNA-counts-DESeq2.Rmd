@@ -626,3 +626,131 @@ pheatmap(log_counts_top_mRNA,
 # Close the PDF device
 dev.off()
 ```
+
+### New count matrix construction for mRNAs
+
+index from cds fasta
+```{bash}
+/home/shared/kallisto/kallisto \
+index -i /home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-index/GCF_002022765.2_C_virginica-3.0_cds_from_genomic.index \
+~/github/oyster-lnc/data/11-mRNA-counts-DESeq2/cds_from_genomic.fna
+
+```
+
+kallisto quant on samples
+```{bash}
+#!/usr/bin/env bash
+set -euo pipefail
+
+KALLISTO="/home/shared/kallisto/kallisto"
+
+OUTDIR="/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2"
+INDEX="${OUTDIR}/kallisto-index/GCF_002022765.2_C_virginica-3.0_cds_from_genomic.index"
+
+FASTQ_DIR=~/github/oyster-lnc/data/01-lncRNA-kallisto
+QUANT_DIR="${OUTDIR}/kallisto-quant"
+
+mkdir -p "${QUANT_DIR}"
+
+for R1 in "${FASTQ_DIR}"/*_R1.fastp-trim.20bp-5prime.20220224.fq.gz
+do
+  sample=$(basename "${R1}" | sed 's/_R1\.fastp-trim\.20bp-5prime\.20220224\.fq\.gz//')
+  R2="${FASTQ_DIR}/${sample}_R2.fastp-trim.20bp-5prime.20220224.fq.gz"
+
+  echo "----------------------------------------"
+  echo "Sample: ${sample}"
+  echo "R1: ${R1}"
+  echo "R2: ${R2}"
+
+  if [[ ! -f "${R2}" ]]; then
+    echo "ERROR: Missing R2 file for ${sample}" >&2
+    exit 1
+  fi
+
+  "${KALLISTO}" quant \
+    -i "${INDEX}" \
+    -o "${QUANT_DIR}/${sample}" \
+    -t 8 \
+    "${R1}" "${R2}"
+done
+```
+
+tx2gene table from CDS FASTA headers to get gene level (mRNA) matrix
+```{r}
+library(Biostrings)
+library(dplyr)
+library(stringr)
+library(tibble)
+library(readr)
+
+fasta_file <- "~/github/oyster-lnc/data/11-mRNA-counts-DESeq2/cds_from_genomic.fna"
+out_file <- "/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2/tx2gene.tsv"
+
+cds <- readDNAStringSet(fasta_file)
+hdr <- names(cds)
+
+tx2gene <- tibble(header = hdr) %>%
+  mutate(
+    target_id = str_extract(header, "^[^ ]+"),
+    gene_id   = str_extract(header, "(?<=\\[gene=)[^\\]]+")
+  ) %>%
+  select(target_id, gene_id)
+
+write_tsv(tx2gene, out_file)
+
+tx2gene %>% head()
+```
+
+import kallisto abundances and summarize gene level counts with tximport
+
+```{r}
+install.packages(c("readr", "dplyr", "tibble"))
+BiocManager::install("tximport")
+```
+```{r}
+install.packages("BiocManager")
+BiocManager::install("rhdf5")
+```
+
+
+```{r}
+library(tximport)
+library(readr)
+library(dplyr)
+library(tibble)
+
+quant_dir <- "/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto-quant"
+tx2gene_file <- "/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2/tx2gene.tsv"
+out_dir <- "/home/shared/8TB_HDD_02/zbengt/github/oyster-lnc/output/11-mRNA-counts-DESeq2"
+
+samples <- list.dirs(quant_dir, recursive = FALSE, full.names = FALSE)
+
+files <- file.path(quant_dir, samples, "abundance.tsv")
+names(files) <- samples
+
+tx2gene <- read_tsv(tx2gene_file, show_col_types = FALSE) %>%
+  filter(!is.na(gene_id), !is.na(target_id))
+
+txi <- tximport(
+  files,
+  type = "kallisto",
+  tx2gene = tx2gene,
+)
+
+gene_counts <- as.data.frame(txi$counts) %>%
+  rownames_to_column("gene_id")
+
+gene_abundance <- as.data.frame(txi$abundance) %>%
+  rownames_to_column("gene_id")
+
+gene_length <- as.data.frame(txi$length) %>%
+  rownames_to_column("gene_id")
+
+write_tsv(gene_counts, file.path(out_dir, "kallisto_gene_counts.tsv"))
+write_tsv(gene_abundance, file.path(out_dir, "kallisto_gene_tpm.tsv"))
+write_tsv(gene_length, file.path(out_dir, "kallisto_gene_length.tsv"))
+```
+
+
+
+
