@@ -9,103 +9,52 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-### Packages
-
 ```{r}
-# Packages (only base + tidyverse)
 library(tidyverse)
+library(tibble)
 
-```
-
-### Import Data
-
-```{r}
-
-# Where you want the matrices to live (change this!)
 data_dir <- "~/github/oyster-lnc/data/15-pearsons"
-
-# URLs or paths to your matrices (replace with your real links)
-lnc_url  <- "https://raw.githubusercontent.com/zbengt/oyster-lnc/refs/heads/main/output/10-count-matrices-DESeq2-final/kallisto-count-matrix/Cvirg_lncRNA_count_matrix.isoform.counts.matrix"
-mrna_url <- "https://raw.githubusercontent.com/sr320/ceabigr/refs/heads/main/output/34-transcript-counts/transcript_counts_per_gene_per_sample.csv"
-
-# Filenames to save as inside dest_dir
 lnc_file  <- file.path(data_dir, "lnc_counts.tsv")
-mrna_file <- file.path(data_dir, "mrna_counts.tsv")
+mrna_file <- "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto_gene_counts.tsv"
 
-if (!file.exists(lnc_file)) {
-  message("Downloading lncRNA matrix to: ", lnc_file)
-  download.file(lnc_url, destfile = lnc_file, mode = "wb")
-} else {
-  message("Using existing lncRNA matrix at: ", lnc_file)
-}
-
-if (!file.exists(mrna_file)) {
-  message("Downloading mRNA matrix to: ", mrna_file)
-  download.file(mrna_url, destfile = mrna_file, mode = "wb")
-} else {
-  message("Using existing mRNA matrix at: ", mrna_file)
-}
-
-lnc_raw <- readr::read_tsv(lnc_file)
-mrna_raw <- readr::read_tsv(mrna_file)
-
-### load matrices
-
-## lncRNA
+## load matrices
 lnc_raw <- readr::read_tsv(lnc_file, show_col_types = FALSE)
-
-# First column is called `...1` -> rename to gene_id
-lnc_raw <- lnc_raw %>%
-  rename(gene_id = `...1`)
+colnames(lnc_raw)[1] <- "gene_id"
 
 lnc_mat <- lnc_raw %>%
-  column_to_rownames("gene_id") %>%
+  tibble::column_to_rownames("gene_id") %>%
   as.matrix()
 
-## mRNA
+mrna_raw <- readr::read_tsv(mrna_file, show_col_types = FALSE)
 
-# This file is comma-separated
-mrna_raw <- readr::read_csv(mrna_file, show_col_types = FALSE)
-
-# First column should be gene_name; the rest include transcript_counts.* and summary columns
-# 1) rename gene_name -> gene_id
-# 2) keep only the transcript count columns
-mrna_counts <- mrna_raw %>%
-  rename(gene_id = gene_name) %>%
-  select(gene_id, starts_with("transcript_counts."))
-
-# 3) strip the "transcript_counts." prefix so sample names match lnc_mat (S12M, S13M, ...)
-colnames(mrna_counts)[-1] <- sub("^transcript_counts\\.", "", colnames(mrna_counts)[-1])
-
-mrna_mat <- mrna_counts %>%
-  column_to_rownames("gene_id") %>%
+mrna_mat <- mrna_raw %>%
+  tibble::column_to_rownames("gene_id") %>%
   as.matrix()
 
-```
-```{r}
-# sanity check
+## coerce to numeric
+lnc_mat <- apply(lnc_mat, 2, as.numeric)
+rownames(lnc_mat) <- lnc_raw$gene_id
 
-head(colnames(lnc_mat))
-head(colnames(mrna_mat))
-```
+mrna_mat <- apply(mrna_mat, 2, as.numeric)
+rownames(mrna_mat) <- mrna_raw$gene_id
 
-
-### Align Samples Across Matrices
-
-```{r}
+## align samples
 common_samples <- intersect(colnames(lnc_mat), colnames(mrna_mat))
 
-lnc_mat <- lnc_mat[, common_samples, drop = FALSE]
+lnc_mat  <- lnc_mat[, common_samples, drop = FALSE]
 mrna_mat <- mrna_mat[, common_samples, drop = FALSE]
 
-n_samples <- length(common_samples)  # should be 26
+n_samples <- length(common_samples)
 print(n_samples)
-```
 
-### Filter out low expression transcripts
+## optional sanity checks
+head(colnames(lnc_mat))
+head(colnames(mrna_mat))
+dim(lnc_mat)
+dim(mrna_mat)
+identical(colnames(lnc_mat), colnames(mrna_mat))
 
-```{r}
-# standard filtering at this stage
+## filter low-expression rows
 min_count   <- 10
 min_samples <- 2
 
@@ -114,31 +63,23 @@ filter_rows <- function(mat, min_count, min_samples) {
   mat[keep, , drop = FALSE]
 }
 
-lnc_mat_f <- filter_rows(lnc_mat,  min_count, min_samples)
+lnc_mat_f  <- filter_rows(lnc_mat,  min_count, min_samples)
 mrna_mat_f <- filter_rows(mrna_mat, min_count, min_samples)
 
-```
-
-### Log Scale Counts Transformation
-
-```{r}
+## log transform
 lnc_log  <- log2(lnc_mat_f + 1)
 mrna_log <- log2(mrna_mat_f + 1)
 
+## pearson correlation
+cor_mat <- cor(
+  t(lnc_log),
+  t(mrna_log),
+  method = "pearson",
+  use = "pairwise.complete.obs"
+)
 ```
 
-### Pearson correlation matrix
-
-```{r}
-# rows = lncRNAs, cols = mRNAs
-cor_mat <- cor(t(lnc_log),
-               t(mrna_log),
-               method = "pearson",
-               use = "pairwise.complete.obs")
-
-```
-
-### Comput p-values and FDRs for all pairs
+### Compute p-values and FDRs for all pairs
 
 ```{r}
 # element-wise
@@ -157,17 +98,15 @@ lnc_ids  <- rownames(cor_mat)
 mrna_ids <- colnames(cor_mat)
 
 coexp_df <- as.data.frame(as.table(cor_mat)) %>%
-  as_tibble() %>%
-  rename(lnc_id = Var1,
-         mrna_id = Var2,
-         r      = Freq)
+  as_tibble()
+
+colnames(coexp_df) <- c("lnc_id", "mrna_id", "r")
 
 # match p-values into the same long format
 p_df <- as.data.frame(as.table(p_vals)) %>%
-  as_tibble() %>%
-  rename(lnc_id = Var1,
-         mrna_id = Var2,
-         p_value = Freq)
+  as_tibble()
+
+colnames(p_df) <- c("lnc_id", "mrna_id", "p_value")
 
 coexp_df <- coexp_df %>%
   left_join(p_df, by = c("lnc_id", "mrna_id"))
@@ -198,16 +137,310 @@ print(sig_pairs %>% head())
 
 ```
 
-### Export file for visualization in cytoscape
+
+# Co-expression summary statistics
+
+## Output directory
 
 ```{r}
-readr::write_tsv(sig_pairs,
-                 "~/github/oyster-lnc/output/15-pearsons/lnc_mrna_coexpression_edges.tsv")
-
+out_dir <- "~/github/oyster-lnc/output/15-pearsons"
+dir.create(path.expand(out_dir), showWarnings = FALSE, recursive = TRUE)
 ```
 
+## Summary statistics table
+
+```{r}
+# Total number of tested lncRNA–mRNA pairs
+n_total_pairs <- nrow(coexp_df)
+
+# Total significant pairs
+n_sig_pairs <- nrow(sig_pairs)
+
+# Unique lncRNAs and mRNAs represented in significant pairs
+n_sig_lnc  <- sig_pairs %>% dplyr::distinct(lnc_id)  %>% nrow()
+n_sig_mrna <- sig_pairs %>% dplyr::distinct(mrna_id) %>%
+  nrow()
+
+summary_stats <- tibble(
+  metric = c(
+    "Total pairs tested",
+    "Significant pairs",
+    "Unique lncRNAs in significant pairs",
+    "Unique mRNAs in significant pairs"
+  ),
+  value = c(
+    n_total_pairs,
+    n_sig_pairs,
+    n_sig_lnc,
+    n_sig_mrna
+  )
+)
+
+summary_stats
+```
+
+## Positive versus negative significant correlations
+
+```{r}
+direction_summary <- sig_pairs %>%
+  dplyr::mutate(direction = dplyr::if_else(r > 0, "positive", "negative")) %>%
+  dplyr::count(direction, name = "n_pairs") %>%
+  dplyr::mutate(prop = n_pairs / sum(n_pairs))
+
+direction_summary
+```
+
+## Top lncRNA hubs table
+
+```{r}
+lnc_hubs <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_correlated_mRNAs") %>%
+  dplyr::arrange(dplyr::desc(n_correlated_mRNAs))
+
+lnc_hubs %>% dplyr::slice_head(n = 20)
+```
+
+## Top mRNA hubs table
+
+```{r}
+mrna_hubs <- sig_pairs %>%
+  dplyr::count(mrna_id, name = "n_correlated_lncRNAs") %>%
+  dplyr::arrange(dplyr::desc(n_correlated_lncRNAs))
+
+mrna_hubs %>% dplyr::slice_head(n = 20)
+```
+
+## lncRNA degree summary table
 
 
+```{r}
+lnc_degree_summary <- lnc_hubs %>%
+  dplyr::summarise(
+    min_degree = min(n_correlated_mRNAs),
+    median_degree = median(n_correlated_mRNAs),
+    mean_degree = mean(n_correlated_mRNAs),
+    max_degree = max(n_correlated_mRNAs)
+  ) %>%
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+lnc_degree_summary
+```
+
+## mRNA degree summary table
+
+```{r}
+mrna_degree_summary <- mrna_hubs %>%
+  dplyr::summarise(
+    min_degree = min(n_correlated_lncRNAs),
+    median_degree = median(n_correlated_lncRNAs),
+    mean_degree = mean(n_correlated_lncRNAs),
+    max_degree = max(n_correlated_lncRNAs)
+  ) %>%
+  tidyr::pivot_longer(
+    cols = everything(),
+    names_to = "metric",
+    values_to = "value"
+  )
+
+mrna_degree_summary
+```
+
+## Optional compact narrative summary
+
+```{r}
+n_pos <- direction_summary %>%
+  dplyr::filter(direction == "positive") %>%
+  dplyr::pull(n_pairs)
+
+n_neg <- direction_summary %>%
+  dplyr::filter(direction == "negative") %>%
+  dplyr::pull(n_pairs)
+
+top_lnc <- lnc_hubs %>% dplyr::slice(1)
+top_mrna <- mrna_hubs %>% dplyr::slice(1)
+
+cat(
+  "A total of", n_total_pairs, "lncRNA-mRNA pairs were tested.",
+  n_sig_pairs, "pairs met the significance thresholds of |r| >=", r_threshold,
+  "and FDR <=", fdr_threshold, ".",
+  "These significant pairs involved", n_sig_lnc, "unique lncRNAs and",
+  n_sig_mrna, "unique mRNAs.",
+  n_pos, "significant pairs were positive and", n_neg, "were negative.",
+  "The most connected lncRNA was", top_lnc$lnc_id,
+  "with", top_lnc$n_correlated_mRNAs, "correlated mRNAs.",
+  "The most connected mRNA was", top_mrna$mrna_id,
+  "with", top_mrna$n_correlated_lncRNAs, "correlated lncRNAs."
+)
+```
+
+## Export summary tables
+
+```{r}
+readr::write_tsv(summary_stats,
+                 file.path(path.expand(out_dir), "coexpression_summary_stats.tsv"))
+
+readr::write_tsv(direction_summary,
+                 file.path(path.expand(out_dir), "coexpression_direction_summary.tsv"))
+
+readr::write_tsv(lnc_hubs,
+                 file.path(path.expand(out_dir), "lnc_hub_summary.tsv"))
+
+readr::write_tsv(mrna_hubs,
+                 file.path(path.expand(out_dir), "mrna_hub_summary.tsv"))
+
+readr::write_tsv(lnc_degree_summary,
+                 file.path(path.expand(out_dir), "lnc_degree_summary.tsv"))
+
+readr::write_tsv(mrna_degree_summary,
+                 file.path(path.expand(out_dir), "mrna_degree_summary.tsv"))
+```
+
+## Optional figure: lncRNA hub degree distribution
+
+```{r}
+ggplot(lnc_hubs, aes(x = n_correlated_mRNAs)) +
+  geom_histogram(bins = 40) +
+  theme_bw() +
+  labs(
+    x = "Number of correlated mRNAs per lncRNA",
+    y = "Count of lncRNAs",
+    title = "Distribution of lncRNA connectivity in the co-expression network"
+  )
+```
+
+## Unique significant mRNAs
+
+```{r}
+unique_mrnas <- sig_pairs %>%
+  dplyr::distinct(mrna_id) %>%
+  dplyr::pull(mrna_id)
+
+unique_mrnas
+
+n_unique_mrnas <- sig_pairs %>%
+  dplyr::distinct(mrna_id) %>%
+  nrow()
+
+n_unique_mrnas
+
+unique_mrna_table <- sig_pairs %>%
+  dplyr::distinct(mrna_id)
+
+unique_mrna_table
+
+readr::write_tsv(
+  unique_mrna_table,
+  "~/github/oyster-lnc/output/15-pearsons/unique_mrnas_in_sig_pairs.tsv"
+)
+
+mrna_degree <- sig_pairs %>%
+  dplyr::count(mrna_id, name = "n_lncRNAs_correlated") %>%
+  dplyr::arrange(desc(n_lncRNAs_correlated))
+
+mrna_degree
+```
+
+```{r}
+mrna_lnc_summary <- sig_pairs %>%
+  dplyr::group_by(mrna_id) %>%
+  dplyr::summarise(
+    n_lncRNAs_correlated = dplyr::n_distinct(lnc_id),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(desc(n_lncRNAs_correlated))
+
+mrna_lnc_summary
+
+mrna_lnc_summary %>%
+  dplyr::slice_head(n = 20)
+
+readr::write_tsv(
+  mrna_lnc_summary,
+  "~/github/oyster-lnc/output/15-pearsons/mrna_lncRNA_degree_table.tsv"
+)
+```
+
+```{r}
+# =========================
+# Install packages (run once)
+# =========================
+if (!requireNamespace("rentrez", quietly = TRUE)) {
+  install.packages("rentrez")
+}
+
+if (!requireNamespace("tidyverse", quietly = TRUE)) {
+  install.packages("tidyverse")
+}
+
+# =========================
+# Load libraries
+# =========================
+library(rentrez)
+library(tidyverse)
+
+# helper for NULL values
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
+# =========================
+# Read your gene list
+# =========================
+ids <- readr::read_tsv(
+  "~/github/oyster-lnc/output/15-pearsons/justIDs.tsv",
+  col_names = FALSE,
+  show_col_types = FALSE
+)[[1]]
+
+# =========================
+# Function to query NCBI
+# =========================
+search_one <- function(sym) {
+  q <- paste0(sym, "[sym] AND Crassostrea virginica[orgn]")
+
+  s <- rentrez::entrez_search(
+    db = "gene",
+    term = q,
+    retmax = 1
+  )
+
+  if (length(s$ids) == 0) {
+    return(tibble(
+      input_id = sym,
+      gene_id = NA_character_,
+      symbol = NA_character_,
+      description = NA_character_
+    ))
+  }
+
+  sm <- rentrez::entrez_summary(
+    db = "gene",
+    id = s$ids[[1]]
+  )
+
+  tibble(
+    input_id   = sym,
+    gene_id    = as.character(sm$uid),
+    symbol     = sm$name %||% NA_character_,
+    description= sm$description %||% NA_character_
+  )
+}
+
+# =========================
+# Run batch annotation
+# =========================
+ann <- purrr::map_dfr(ids, search_one)
+
+# =========================
+# Save output
+# =========================
+readr::write_tsv(ann, "gene_annotations.tsv")
+
+# view result
+ann
+```
 
 
 
