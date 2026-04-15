@@ -1,0 +1,31 @@
+mrna_id	n_lncRNAs	GeneID	Symbol	description	type_of_gene	n_go_terms	example_go_terms
+LOC111107689	1525	NA	NA	NA	NA	NA	NA
+LOC111103610	1522	111103610	LOC111103610	uncharacterized LOC111103610	protein-coding	NA	NA
+LOC111132339	1516	111132339	LOC111132339	uncharacterized LOC111132339	protein-coding	3	hydrolase activity, hydrolyzing O-glycosyl compounds; carbohydrate metabolic process; zinc ion binding
+LOC111111320	1514	111111320	LOC111111320	heat shock 70 kDa protein 12A-like	protein-coding	2	ATP binding; ATP-dependent protein folding chaperone
+LOC111105683	1512	111105683	LOC111105683	uncharacterized LOC111105683	protein-coding	6	protein binding; plasma membrane; adenylate cyclase-activating G protein-coupled receptor signaling pathway; activation of adenylate cyclase activity; G protein-coupled peptide receptor activity
+LOC111126813	1512	111126813	LOC111126813	heat shock 70 kDa protein 12A-like	protein-coding	NA	NA
+LOC111127923	1510	111127923	LOC111127923	high-affinity choline transporter 1-like	protein-coding	5	choline:sodium symporter activity; plasma membrane; acetylcholine biosynthetic process; choline transport; transmembrane transport
+LOC111106094	1508	NA	NA	NA	NA	NA	NA
+LOC111122566	1507	111122566	LOC111122566	protein O-mannosyl-transferase TMTC1-like	protein-coding	1	protein binding
+LOC111132218	1506	111132218	LOC111132218	uncharacterized LOC111132218	protein-coding	NA	NA
+LOC111132345	1506	NA	NA	NA	NA	NA	NA
+LOC111109495	1504	NA	NA	NA	NA	NA	NA
+LOC111111792	1503	NA	NA	NA	NA	NA	NA
+LOC111112351	1501	NA	NA	NA	NA	NA	NA
+LOC111119012	1501	111119012	LOC111119012	scavenger receptor cysteine-rich domain-containing protein DMBT1-like	protein-coding	1	membrane
+LOC111120185	1501	NA	NA	NA	NA	NA	NA
+LOC111120747	1501	111120747	LOC111120747	transient receptor potential cation channel subfamily A member 1-like	protein-coding	5	monoatomic ion channel activity; protein binding; membrane; monoatomic ion transmembrane transport; transmembrane transporter complex
+LOC111122921	1501	111122921	LOC111122921	uncharacterized LOC111122921	protein-coding	1	chitin binding
+LOC111132884	1500	111132884	LOC111132884	chordin-like	protein-coding	4	multicellular organism development; dorsal/ventral pattern formation; negative regulation of BMP signaling pathway; BMP binding
+LOC111104812	1499	111104812	LOC111104812	uncharacterized LOC111104812	protein-coding	NA	NA
+LOC111124328	1499	NA	NA	NA	NA	NA	NA
+LOC111120620	1498	111120620	LOC111120620	glutamate receptor ionotropic, NMDA 2B-like	protein-coding	4	monoatomic ion transport; ligand-gated monoatomic ion channel activity; membrane; signaling receptor activity
+LOC111109230	1496	NA	NA	NA	NA	NA	NA
+LOC111110575	1496	NA	NA	NA	NA	NA	NA
+LOC111122679	1496	111122679	LOC111122679	uncharacterized LOC111122679	protein-coding	3	G protein-coupled receptor activity; G protein-coupled receptor signaling pathway; membrane
+LOC111128601	1495	NA	NA	NA	NA	NA	NA
+LOC111111289	1494	NA	NA	NA	NA	NA	NA
+LOC111132623	1494	111132623	LOC111132623	inositol 1,4,5-trisphosphate-gated calcium channel ITPR2-like	protein-coding	5	inositol 1,4,5-trisphosphate-gated calcium channel activity; endoplasmic reticulum; membrane; calcium ion transmembrane transport; inositol 1,4,5 trisphosphate binding
+LOC111136947	1494	111136947	LOC111136947	neuroligin-4, X-linked-like	protein-coding	2	membrane; neurexin family protein binding
+LOC111129560	1493	NA	NA	NA	NA	NA	NA
