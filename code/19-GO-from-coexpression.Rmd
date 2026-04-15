@@ -1,0 +1,535 @@
+---
+title: "19-GO-from-coexpression"
+author: "Zach Bengtsson"
+date: "2026-04-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+GO enrichment for Eastern oyster coexpression results
+when mRNA IDs look like LOC111120067
+
+## ---------------------------
+## Packages
+## ---------------------------
+
+```{r}
+packages <- c(
+  "tidyverse",
+  "clusterProfiler",
+  "enrichplot",
+  "GO.db"
+)
+
+to_install <- packages[!vapply(packages, requireNamespace, logical(1), quietly = TRUE)]
+if (length(to_install) > 0) {
+  install.packages(setdiff(to_install, c("clusterProfiler", "enrichplot", "GO.db")))
+  if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+  bioc_pkgs <- intersect(to_install, c("clusterProfiler", "enrichplot", "GO.db"))
+  if (length(bioc_pkgs) > 0) {
+    BiocManager::install(bioc_pkgs, ask = FALSE, update = FALSE)
+  }
+}
+
+library(tidyverse)
+library(clusterProfiler)
+library(enrichplot)
+library(GO.db)
+```
+
+## ---------------------------
+## Input / output
+## ---------------------------
+```{r}
+coexp_dir <- "../output/18-lncRNA-mRNA-pearson"
+out_dir   <- "../output/19-GO-from-coexpression"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+sig_pairs_file <- file.path(coexp_dir, "significant_lnc_mrna_pairs.tsv")
+mrna_file      <- "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto_gene_counts.tsv"
+```
+## ---------------------------
+## Load data
+## ---------------------------
+
+```{r}
+sig_pairs <- readr::read_tsv(sig_pairs_file, show_col_types = FALSE)
+
+mrna_raw <- readr::read_tsv(mrna_file, show_col_types = FALSE)
+colnames(mrna_raw)[1] <- "mrna_id"
+
+mrna_universe_ids <- unique(mrna_raw$mrna_id)
+```
+
+## ---------------------------
+## Hub mRNA summary
+## ---------------------------
+
+```{r}
+mrna_degree <- sig_pairs %>%
+  count(mrna_id, name = "n_lncRNAs") %>%
+  arrange(desc(n_lncRNAs), mrna_id)
+
+readr::write_tsv(mrna_degree, file.path(out_dir, "mrna_degree_table.tsv"))
+
+n_hub <- max(10, ceiling(0.10 * nrow(mrna_degree)))
+
+hub_mrnas <- mrna_degree %>%
+  slice_head(n = n_hub)
+
+readr::write_tsv(hub_mrnas, file.path(out_dir, "hub_mrnas_top10pct.tsv"))
+```
+
+## ---------------------------
+## Download NCBI files
+## ---------------------------
+
+```{r}
+tax_id <- 6565
+
+gene2go_url   <- "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2go.gz"
+gene_info_url <- "https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/All_Data.gene_info.gz"
+
+gene2go_oyster_file   <- file.path(out_dir, "gene2go_oyster.tsv")
+gene_info_oyster_file <- file.path(out_dir, "gene_info_oyster.tsv")
+
+if (!file.exists(gene2go_oyster_file)) {
+  gene2go <- data.table::fread(
+    cmd = paste(
+      "curl -L", shQuote(gene2go_url), "| gzip -dc"
+    ),
+    sep = "\t",
+    header = FALSE,
+    skip = 1,
+    quote = "",
+    fill = TRUE,
+    showProgress = TRUE,
+    col.names = c(
+      "tax_id", "GeneID", "GO_ID", "Evidence", "Qualifier",
+      "GO_term", "PubMed", "Category"
+    )
+  ) |>
+    tibble::as_tibble() |>
+    dplyr::filter(tax_id == !!tax_id) |>
+    dplyr::mutate(GeneID = as.character(GeneID)) |>
+    dplyr::distinct(GeneID, GO_ID, GO_term, Category, .keep_all = TRUE)
+
+  readr::write_tsv(gene2go, gene2go_oyster_file)
+}
+
+if (!file.exists(gene_info_oyster_file)) {
+  gene_info <- data.table::fread(
+    cmd = paste(
+      "curl -L", shQuote(gene_info_url), "| gzip -dc"
+    ),
+    sep = "\t",
+    header = FALSE,
+    skip = 1,
+    quote = "",
+    fill = TRUE,
+    showProgress = TRUE,
+    col.names = c(
+      "tax_id", "GeneID", "Symbol", "LocusTag", "Synonyms",
+      "dbXrefs", "chromosome", "map_location", "description",
+      "type_of_gene", "Symbol_from_nomenclature_authority",
+      "Full_name_from_nomenclature_authority",
+      "Nomenclature_status", "Other_designations",
+      "Modification_date", "Feature_type"
+    )
+  ) |>
+    tibble::as_tibble() |>
+    dplyr::filter(tax_id == !!tax_id) |>
+    dplyr::mutate(
+      GeneID = as.character(GeneID),
+      Symbol = dplyr::na_if(Symbol, "-"),
+      LocusTag = dplyr::na_if(LocusTag, "-"),
+      Synonyms = dplyr::na_if(Synonyms, "-")
+    )
+
+  readr::write_tsv(gene_info, gene_info_oyster_file)
+}
+
+cat("Cached oyster annotation files:\n")
+cat(" -", gene2go_oyster_file, "\n")
+cat(" -", gene_info_oyster_file, "\n")
+```
+## ---------------------------
+## Cache Building
+## ---------------------------
+
+```{r}
+tax_id <- 6565
+gene2go_url <- "https://ftp.ncbi.nlm.nih.gov/gene/DATA/gene2go.gz"
+gene_info_url <- "https://ftp.ncbi.nlm.nih.gov/gene/DATA/GENE_INFO/All_Data.gene_info.gz"
+
+gene2go_oyster_file   <- file.path(out_dir, "gene2go_oyster.tsv")
+gene_info_oyster_file <- file.path(out_dir, "gene_info_oyster.tsv")
+```
+
+
+## ---------------------------
+## Read gene2go
+## ---------------------------
+
+```{r}
+gene2go <- readr::read_tsv(
+  gene2go_oyster_file,
+  show_col_types = FALSE,
+  col_types = readr::cols(.default = readr::col_character())
+) %>%
+  mutate(GeneID = as.character(GeneID)) %>%
+  distinct(GeneID, GO_ID, GO_term, Category, .keep_all = TRUE)
+```
+
+## ---------------------------
+## Read gene_info
+## ---------------------------
+
+```{r}
+gene_info <- readr::read_tsv(
+  gene_info_oyster_file,
+  show_col_types = FALSE,
+  col_types = readr::cols(.default = readr::col_character())
+) %>%
+  mutate(
+    GeneID   = as.character(GeneID),
+    Symbol   = na_if(Symbol, "-"),
+    LocusTag = na_if(LocusTag, "-"),
+    Synonyms = na_if(Synonyms, "-")
+  )
+```
+
+## ---------------------------
+## Clean IDs
+## ---------------------------
+
+```{r}
+clean_id <- function(x) {
+  x %>%
+    as.character() %>%
+    stringr::str_trim() %>%
+    stringr::str_remove("\\.[0-9]+$")
+}
+
+all_ids_tbl <- tibble(
+  mrna_id = unique(c(mrna_universe_ids, sig_pairs$mrna_id))
+) %>%
+  mutate(mrna_id_clean = clean_id(mrna_id))
+```
+
+## ---------------------------
+## Primary mapping:
+## LOC identifiers should match NCBI gene_info$Symbol directly
+## ---------------------------
+
+```{r}
+id_map_symbol <- all_ids_tbl %>%
+  left_join(
+    gene_info %>%
+      transmute(
+        GeneID,
+        Symbol,
+        description,
+        type_of_gene,
+        match_value = Symbol
+      ),
+    by = c("mrna_id_clean" = "match_value")
+  ) %>%
+  mutate(match_type = ifelse(!is.na(GeneID), "Symbol", NA_character_))
+```
+
+## ---------------------------
+## Secondary fallback:
+## if an mrna_id is actually already a GeneID number
+## ---------------------------
+
+```{r}
+id_map_geneid <- all_ids_tbl %>%
+  left_join(
+    gene_info %>%
+      transmute(
+        GeneID,
+        Symbol,
+        description,
+        type_of_gene,
+        match_value = GeneID
+      ),
+    by = c("mrna_id_clean" = "match_value")
+  ) %>%
+  mutate(match_type = ifelse(!is.na(GeneID), "GeneID", NA_character_))
+```
+
+## ---------------------------
+## Combine mappings, prefer Symbol match first
+## ---------------------------
+
+```{r}
+id_map <- id_map_symbol %>%
+  bind_rows(id_map_geneid) %>%
+  group_by(mrna_id) %>%
+  arrange(factor(match_type, levels = c("Symbol", "GeneID"))) %>%
+  slice_head(n = 1) %>%
+  ungroup()
+
+readr::write_tsv(id_map, file.path(out_dir, "mrna_id_to_ncbi_GeneID_map.tsv"))
+
+mapping_summary <- tibble(
+  n_unique_mrna_ids = n_distinct(all_ids_tbl$mrna_id),
+  n_mapped          = sum(!is.na(id_map$GeneID)),
+  prop_mapped       = mean(!is.na(id_map$GeneID))
+)
+
+print(mapping_summary)
+readr::write_tsv(mapping_summary, file.path(out_dir, "mapping_summary.tsv"))
+```
+
+## ---------------------------
+## Annotate network tables
+## ---------------------------
+
+```{r}
+sig_pairs_annot <- sig_pairs %>%
+  left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description, type_of_gene, match_type),
+    by = "mrna_id"
+  )
+
+mrna_degree_annot <- mrna_degree %>%
+  left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description, type_of_gene, match_type),
+    by = "mrna_id"
+  )
+
+readr::write_tsv(sig_pairs_annot, file.path(out_dir, "significant_pairs_with_geneIDs.tsv"))
+readr::write_tsv(mrna_degree_annot, file.path(out_dir, "mrna_degree_with_geneIDs.tsv"))
+```
+
+## ---------------------------
+## TERM2GENE / TERM2NAME
+## ---------------------------
+
+```{r}
+term2gene <- gene2go %>%
+  transmute(term = GO_ID, gene = GeneID) %>%
+  distinct()
+
+term2name <- gene2go %>%
+  transmute(term = GO_ID, name = GO_term) %>%
+  distinct()
+```
+
+## ---------------------------
+## Recreate filtered mRNA universe (mrna_variable)
+## ---------------------------
+
+```{r}
+# Load mRNA matrix
+mrna_raw <- readr::read_tsv(mrna_file, show_col_types = FALSE) %>%
+  dplyr::rename(mrna_id = gene_id)
+
+mrna_mat <- mrna_raw %>%
+  tibble::column_to_rownames("mrna_id") %>%
+  as.matrix()
+```
+
+## ---------------------------
+## Filter low-expression genes
+## ---------------------------
+
+```{r}
+min_count   <- 10
+min_samples <- 26
+
+filter_rows <- function(mat, min_count, min_samples) {
+  keep <- rowSums(mat >= min_count) >= min_samples
+  mat[keep, , drop = FALSE]
+}
+
+mrna_mat_f <- filter_rows(mrna_mat, min_count, min_samples)
+
+cat("After expression filter:", nrow(mrna_mat_f), "genes\n")
+```
+
+## ---------------------------
+## Filter low-variability genes (CV filter)
+## ---------------------------
+
+```{r}
+cv_threshold <- 0.1
+
+compute_cv <- function(x) {
+  sd(x) / (mean(x) + 1e-9)
+}
+
+mrna_cv <- apply(mrna_mat_f, 1, compute_cv)
+
+mrna_variable <- mrna_mat_f[mrna_cv > cv_threshold, , drop = FALSE]
+
+cat("After CV filter:", nrow(mrna_variable), "genes\n")
+```
+
+## ---------------------------
+## Define correct background universe
+## ---------------------------
+
+```{r}
+mrna_universe_ids <- rownames(mrna_variable)
+
+cat("Final universe size:", length(mrna_universe_ids), "\n")
+```
+
+## ---------------------------
+## Background universe
+## ---------------------------
+
+```{r}
+gene_universe <- id_map %>%
+  dplyr::filter(mrna_id %in% mrna_universe_ids, !is.na(GeneID)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+```
+
+## ---------------------------
+## GO enrichment: hub mRNAs
+## ---------------------------
+
+```{r}
+hub_gene_ids <- hub_mrnas %>%
+  left_join(id_map %>% dplyr::select(mrna_id, GeneID), by = "mrna_id") %>%
+  dplyr::filter(!is.na(GeneID)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+ego_hubs <- enricher(
+  gene          = hub_gene_ids,
+  universe      = gene_universe,
+  TERM2GENE     = term2gene,
+  TERM2NAME     = term2name,
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05,
+  minGSSize     = 10,
+  maxGSSize     = 500
+)
+
+if (!is.null(ego_hubs) && nrow(as.data.frame(ego_hubs)) > 0) {
+  ego_hubs_df <- as.data.frame(ego_hubs) %>%
+    dplyr::mutate(
+      ONTOLOGY = purrr::map_chr(ID, ~{
+        x <- gene2go %>%
+          dplyr::filter(GO_ID == .x) %>%
+          dplyr::slice_head(n = 1) %>%
+          dplyr::pull(Category)
+        if (length(x) == 0) NA_character_ else x
+      })
+    )
+
+  readr::write_tsv(ego_hubs_df, file.path(out_dir, "GO_enrichment_hub_mrnas.tsv"))
+
+  p_dot <- dotplot(ego_hubs, showCategory = 20) +
+    ggplot2::ggtitle("GO enrichment of hub mRNAs")
+
+  ggplot2::ggsave(
+    file.path(out_dir, "GO_dotplot_hub_mrnas.png"),
+    p_dot, width = 10, height = 7, dpi = 300
+  )
+}
+```
+
+```{r}
+as.data.frame(ego_hubs) %>% head()
+```
+
+
+## ---------------------------
+## GO enrichment: top hub lncRNA target sets
+## ---------------------------
+
+```{r}
+top_lnc <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_targets") %>%
+  dplyr::arrange(desc(n_targets)) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::pull(lnc_id)
+
+lnc_go_results <- list()
+
+for (lnc in top_lnc) {
+  target_gene_ids <- sig_pairs %>%
+    dplyr::filter(lnc_id == lnc) %>%
+    left_join(id_map %>% dplyr::select(mrna_id, GeneID), by = "mrna_id") %>%
+    dplyr::filter(!is.na(GeneID)) %>%
+    dplyr::pull(GeneID) %>%
+    unique()
+
+  if (length(target_gene_ids) < 10) next
+
+  ego_lnc <- enricher(
+    gene          = target_gene_ids,
+    universe      = gene_universe,
+    TERM2GENE     = term2gene,
+    TERM2NAME     = term2name,
+    pAdjustMethod = "BH",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05,
+    minGSSize     = 10,
+    maxGSSize     = 500
+  )
+
+  if (!is.null(ego_lnc) && nrow(as.data.frame(ego_lnc)) > 0) {
+    ego_lnc_df <- as.data.frame(ego_lnc) %>%
+      dplyr::mutate(lnc_id = lnc)
+
+    lnc_go_results[[lnc]] <- ego_lnc_df
+
+    safe_name <- gsub("[^A-Za-z0-9_.-]", "_", lnc)
+    p <- dotplot(ego_lnc, showCategory = 12) +
+      ggplot2::ggtitle(paste("GO enrichment for targets of", lnc))
+
+    ggplot2::ggsave(
+      file.path(out_dir, paste0("GO_dotplot_", safe_name, ".png")),
+      p, width = 10, height = 6, dpi = 300
+    )
+  }
+}
+
+if (length(lnc_go_results) > 0) {
+  all_lnc_go <- dplyr::bind_rows(lnc_go_results)
+  readr::write_tsv(all_lnc_go, file.path(out_dir, "GO_enrichment_top_lnc_modules.tsv"))
+}
+```
+
+## ---------------------------
+## Convenient annotation table for manuscript use
+## ---------------------------
+
+```{r}
+top30_hub_mrna_annotation <- mrna_degree %>%
+  dplyr::slice_head(n = 30) %>%
+  left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description, type_of_gene),
+    by = "mrna_id"
+  ) %>%
+  left_join(
+    gene2go %>%
+      dplyr::group_by(GeneID) %>%
+      dplyr::summarise(
+        n_go_terms = dplyr::n_distinct(GO_ID),
+        example_go_terms = paste(head(unique(GO_term), 5), collapse = "; "),
+        .groups = "drop"
+      ),
+    by = "GeneID"
+  )
+
+readr::write_tsv(
+  top30_hub_mrna_annotation,
+  file.path(out_dir, "top30_hub_mrna_annotations.tsv")
+)
+
+cat("Done.\n")
+cat("Mapped mRNA IDs:", sum(!is.na(id_map$GeneID)), "of", dplyr::n_distinct(id_map$mrna_id), "\n")
+cat("Output written to:", out_dir, "\n")
+```
