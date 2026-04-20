@@ -533,3 +533,469 @@ cat("Done.\n")
 cat("Mapped mRNA IDs:", sum(!is.na(id_map$GeneID)), "of", dplyr::n_distinct(id_map$mrna_id), "\n")
 cat("Output written to:", out_dir, "\n")
 ```
+
+## ---------------------------
+## GO enrichment: lncRNA hub selection for demonstration
+## ---------------------------
+
+# Load top lnc hubs
+```{r}
+all_lnc_go <- readr::read_tsv(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/GO_enrichment_top_lnc_modules.tsv",
+  show_col_types = FALSE
+)
+
+```
+
+```{r}
+lnc_summary <- all_lnc_go %>%
+  dplyr::group_by(lnc_id) %>%
+  dplyr::summarise(
+    n_terms = dplyr::n(),
+    min_padj = min(p.adjust, na.rm = TRUE),
+    top_term = Description[which.min(p.adjust)],
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(min_padj, dplyr::desc(n_terms))
+
+# write to TSV
+readr::write_tsv(
+  lnc_summary,
+  file.path("~/github/oyster-lnc/output/19-GO-from-coexpression/lnc_summary.tsv")
+)
+
+lnc_summary
+```
+
+### Inspect terms by lncRNA
+
+```{r}
+all_lnc_go %>%
+  dplyr::select(lnc_id, Description, p.adjust, Count) %>%
+  dplyr::arrange(lnc_id, p.adjust) %>%
+  print(n = 100)
+```
+
+```{r}
+split(all_lnc_go %>% dplyr::arrange(p.adjust), all_lnc_go$lnc_id)
+```
+
+### Figures for 3
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+all_lnc_go <- readr::read_tsv(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/GO_enrichment_top_lnc_modules.tsv",
+  show_col_types = FALSE
+)
+
+focus_lnc <- c(
+  "rna-XR_002634986.1",
+  "rna-XR_002638098.1",
+  "rna-XR_002638049.1"
+)
+
+plot_lnc_go <- function(df, lnc_name, panel_title, n_terms = 10) {
+  df_sub <- df %>%
+    dplyr::filter(lnc_id == lnc_name) %>%
+    dplyr::arrange(p.adjust) %>%
+    dplyr::slice_head(n = n_terms) %>%
+    dplyr::mutate(
+      GeneRatio_num = sapply(strsplit(GeneRatio, "/"), function(x) as.numeric(x[1]) / as.numeric(x[2])),
+      Description = factor(Description, levels = rev(unique(Description)))
+    )
+
+  ggplot(df_sub, aes(x = GeneRatio_num, y = Description)) +
+    geom_point(aes(size = Count, color = p.adjust)) +
+    scale_color_viridis_c(direction = -1) +
+    labs(
+      title = panel_title,
+      x = "GeneRatio",
+      y = NULL,
+      color = "Adj. p",
+      size = "Count"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 11),
+      axis.text.y = element_text(size = 9)
+    )
+}
+
+p1 <- plot_lnc_go(all_lnc_go, "rna-XR_002634986.1", "A. rna-XR_002634986.1")
+p2 <- plot_lnc_go(all_lnc_go, "rna-XR_002638098.1", "B. rna-XR_002638098.1")
+p3 <- plot_lnc_go(all_lnc_go, "rna-XR_002638049.1", "C. rna-XR_002638049.1")
+
+combined_lnc_go <- (p1 / p2 / p3) +
+  plot_annotation(
+    title = "GO enrichment of mRNAs associated with representative hub lncRNAs"
+  )
+
+ggsave(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/lncRNA_module_GO_panels.png",
+  combined_lnc_go,
+  width = 10,
+  height = 14,
+  dpi = 300
+)
+
+combined_lnc_go
+```
+
+### G protein receptor and calcium
+
+```{r}
+library(tidyverse)
+
+gene2go <- readr::read_tsv(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/gene2go_oyster.tsv",
+  show_col_types = FALSE
+)
+
+sig_pairs <- readr::read_tsv(
+  "~/github/oyster-lnc/output/18-lncRNA-mRNA-pearson/significant_lnc_mrna_pairs.tsv",
+  show_col_types = FALSE
+)
+
+id_map <- readr::read_tsv(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/mrna_id_to_ncbi_GeneID_map.tsv",
+  show_col_types = FALSE
+)
+
+# calcium and GPCR GO-linked genes from your oyster annotation
+calcium_genes <- gene2go %>%
+  dplyr::filter(grepl("calcium", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+gpcr_genes <- gene2go %>%
+  dplyr::filter(grepl("G protein|receptor", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+# map sig_pairs mRNAs to GeneID
+sig_pairs_annot <- sig_pairs %>%
+  dplyr::left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description),
+    by = "mrna_id"
+  )
+
+# score each lncRNA by how many calcium / GPCR genes it connects to
+lnc_target_theme_summary <- sig_pairs_annot %>%
+  dplyr::group_by(lnc_id) %>%
+  dplyr::summarise(
+    n_targets = dplyr::n_distinct(mrna_id),
+    n_mapped_targets = dplyr::n_distinct(mrna_id[!is.na(GeneID)]),
+    n_calcium_targets = dplyr::n_distinct(mrna_id[GeneID %in% calcium_genes]),
+    n_gpcr_targets = dplyr::n_distinct(mrna_id[GeneID %in% gpcr_genes]),
+    prop_calcium = n_calcium_targets / pmax(n_mapped_targets, 1),
+    prop_gpcr = n_gpcr_targets / pmax(n_mapped_targets, 1),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(dplyr::desc(n_calcium_targets), dplyr::desc(n_gpcr_targets))
+
+readr::write_tsv(
+  lnc_target_theme_summary,
+  file.path("~/github/oyster-lnc/output/19-GO-from-coexpression/lnc_target_theme_summary.tsv")
+)
+
+lnc_target_theme_summary
+```
+
+### Plot
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+calcium_lnc <- "rna-XR_002638067.1"
+gpcr_lnc    <- "rna-XR_002638049.1"
+
+# calcium / GPCR gene sets
+calcium_genes <- gene2go %>%
+  dplyr::filter(grepl("calcium", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+gpcr_genes <- gene2go %>%
+  dplyr::filter(grepl("G protein|receptor", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+# annotated pairs
+sig_pairs_annot <- sig_pairs %>%
+  dplyr::left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol),
+    by = "mrna_id"
+  )
+
+# extract targets
+calcium_targets <- sig_pairs_annot %>%
+  dplyr::filter(lnc_id == calcium_lnc, GeneID %in% calcium_genes)
+
+gpcr_targets <- sig_pairs_annot %>%
+  dplyr::filter(lnc_id == gpcr_lnc, GeneID %in% gpcr_genes)
+
+plot_target_bar <- function(df, title) {
+  df_plot <- df %>%
+    dplyr::mutate(
+      label = dplyr::if_else(!is.na(Symbol) & Symbol != "", Symbol, mrna_id)
+    ) %>%
+    dplyr::arrange(dplyr::desc(abs(r))) %>%
+    dplyr::slice_head(n = 12)
+
+  ggplot(df_plot, aes(x = reorder(label, abs(r)), y = abs(r), fill = r > 0)) +
+    geom_col() +
+    coord_flip() +
+    scale_fill_manual(values = c("TRUE" = "#E63946", "FALSE" = "#457B9D"), guide = "none") +
+    labs(
+      title = title,
+      x = NULL,
+      y = "|Pearson r|"
+    ) +
+    theme_minimal(base_size = 11)
+}
+
+p_calcium <- plot_target_bar(
+  calcium_targets,
+  paste("A.", calcium_lnc, "calcium-related targets")
+)
+
+p_gpcr <- plot_target_bar(
+  gpcr_targets,
+  paste("B.", gpcr_lnc, "GPCR-related targets")
+)
+
+final_panel <- p_calcium / p_gpcr +
+  plot_annotation(
+    title = "Representative lncRNAs associated with calcium- and GPCR-related gene targets"
+  )
+
+ggsave(
+  "~/github/oyster-lnc/output/19-GO-from-coexpression/lnc_calcium_gpcr_panels.png",
+  final_panel,
+  width = 10,
+  height = 12,
+  dpi = 300
+)
+
+final_panel
+```
+
+### Network plots
+
+```{r}
+library(tidyverse)
+library(igraph)
+library(patchwork)
+
+out_dir <- "~/github/oyster-lnc/output/19-GO-from-coexpression"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+calcium_lnc <- "rna-XR_002638067.1"
+gpcr_lnc    <- "rna-XR_002638049.1"
+
+# rebuild annotated pairs if needed
+sig_pairs_annot <- sig_pairs %>%
+  dplyr::left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description),
+    by = "mrna_id"
+  )
+
+# define theme gene sets from GO terms
+calcium_genes <- gene2go %>%
+  dplyr::filter(grepl("calcium", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+gpcr_genes <- gene2go %>%
+  dplyr::filter(grepl("G protein|receptor", GO_term, ignore.case = TRUE)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+
+plot_lnc_subnetwork <- function(sig_df, lnc_name, theme_gene_ids, title_text) {
+  sub_edges <- sig_df %>%
+    dplyr::filter(lnc_id == lnc_name, GeneID %in% theme_gene_ids) %>%
+    dplyr::mutate(
+      from = lnc_id,
+      to = mrna_id,
+      plot_label = dplyr::if_else(
+        !is.na(Symbol) & Symbol != "",
+        Symbol,
+        mrna_id
+      )
+    ) %>%
+    dplyr::arrange(dplyr::desc(abs(r)), FDR) %>%
+    dplyr::slice_head(n = 15)
+
+  if (nrow(sub_edges) == 0) {
+    stop(paste("No edges found for", lnc_name))
+  }
+
+  g_sub <- igraph::graph_from_data_frame(
+    sub_edges %>% dplyr::select(from, to, r, FDR),
+    directed = FALSE
+  )
+
+  V(g_sub)$type <- ifelse(V(g_sub)$name == lnc_name, "lncRNA", "mRNA")
+
+  V(g_sub)$label <- ifelse(V(g_sub)$name == lnc_name, lnc_name, NA)
+
+  V(g_sub)$color <- ifelse(V(g_sub)$type == "lncRNA", "#E63946", "#457B9D")
+  V(g_sub)$size  <- ifelse(V(g_sub)$type == "lncRNA", 16, 8)
+  V(g_sub)$label.cex <- 0.9
+  V(g_sub)$label.color <- "gray20"
+  V(g_sub)$frame.color <- NA
+
+  E(g_sub)$color <- ifelse(sub_edges$r > 0, "#E63946AA", "#457B9DAA")
+  E(g_sub)$width <- scales::rescale(abs(sub_edges$r), to = c(1, 3))
+
+  set.seed(123)
+  lay <- igraph::layout_with_fr(g_sub, niter = 1500)
+
+  plot(
+    g_sub,
+    layout = lay,
+    main = title_text,
+    vertex.label.family = "sans",
+    edge.curved = 0.1,
+    margin = 0.1
+  )
+}
+
+png(
+  file.path(out_dir, "lnc_calcium_gpcr_subnetworks.png"),
+  width = 2400, height = 3200, res = 300
+)
+
+par(mfrow = c(2, 1), mar = c(1, 1, 3, 1))
+
+plot_lnc_subnetwork(
+  sig_df = sig_pairs_annot,
+  lnc_name = calcium_lnc,
+  theme_gene_ids = calcium_genes,
+  title_text = "A. Calcium-related subnetwork"
+)
+
+plot_lnc_subnetwork(
+  sig_df = sig_pairs_annot,
+  lnc_name = gpcr_lnc,
+  theme_gene_ids = gpcr_genes,
+  title_text = "B. GPCR/signaling-related subnetwork"
+)
+
+dev.off()
+```
+
+### Dot plots for specific GPCR/calcium correlated lncRNAs
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(patchwork)
+
+out_dir <- "~/github/oyster-lnc/output/19-GO-from-coexpression"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+calcium_lnc <- "rna-XR_002638067.1"
+gpcr_lnc    <- "rna-XR_002638049.1"
+
+# rebuild annotated pairs if needed
+sig_pairs_annot <- sig_pairs %>%
+  dplyr::left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID, Symbol, description),
+    by = "mrna_id"
+  )
+
+plot_lnc_theme_dotplot <- function(sig_df, gene2go_df, lnc_name, pattern, panel_title, n_terms = 10) {
+  
+  # all mapped target genes for this lncRNA
+  lnc_targets <- sig_df %>%
+    dplyr::filter(lnc_id == lnc_name, !is.na(GeneID)) %>%
+    dplyr::distinct(mrna_id, GeneID)
+
+  n_total_targets <- nrow(lnc_targets)
+
+  if (n_total_targets == 0) {
+    stop(paste("No mapped targets found for", lnc_name))
+  }
+
+  # GO terms matching desired theme
+  theme_go <- gene2go_df %>%
+    dplyr::filter(grepl(pattern, GO_term, ignore.case = TRUE)) %>%
+    dplyr::distinct(GeneID, GO_ID, GO_term, Category)
+
+  # join targets to theme GO terms
+  plot_df <- lnc_targets %>%
+    dplyr::inner_join(theme_go, by = "GeneID") %>%
+    dplyr::group_by(GO_ID, GO_term, Category) %>%
+    dplyr::summarise(
+      Count = dplyr::n_distinct(mrna_id),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      GeneRatio = Count / n_total_targets
+    ) %>%
+    dplyr::arrange(dplyr::desc(Count), dplyr::desc(GeneRatio)) %>%
+    dplyr::slice_head(n = n_terms)
+
+  if (nrow(plot_df) == 0) {
+    stop(paste("No GO terms matched pattern for", lnc_name))
+  }
+
+  ggplot(plot_df, aes(x = GeneRatio, y = reorder(GO_term, GeneRatio))) +
+    geom_point(aes(size = Count, color = Count)) +
+    scale_color_viridis_c() +
+    labs(
+      title = panel_title,
+      subtitle = paste0(lnc_name, " (n = ", n_total_targets, " mapped correlated mRNAs)"),
+      x = "GeneRatio among correlated mRNAs",
+      y = NULL,
+      size = "Count",
+      color = "Count"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      axis.text.y = element_text(size = 9)
+    )
+}
+
+p_calcium <- plot_lnc_theme_dotplot(
+  sig_df = sig_pairs_annot,
+  gene2go_df = gene2go,
+  lnc_name = calcium_lnc,
+  pattern = "calcium",
+  panel_title = "A. Calcium-related GO terms"
+)
+
+p_gpcr <- plot_lnc_theme_dotplot(
+  sig_df = sig_pairs_annot,
+  gene2go_df = gene2go,
+  lnc_name = gpcr_lnc,
+  pattern = "G protein|receptor",
+  panel_title = "B. GPCR/signaling-related GO terms"
+)
+
+combined_theme_plot <- p_calcium / p_gpcr +
+  plot_annotation(
+    title = "Representative lncRNAs and the GO categories represented among their correlated mRNAs"
+  )
+
+ggsave(
+  file.path(out_dir, "lnc_calcium_gpcr_theme_dotplots.png"),
+  combined_theme_plot,
+  width = 10,
+  height = 12,
+  dpi = 300
+)
+
+combined_theme_plot
+```
+
+
+

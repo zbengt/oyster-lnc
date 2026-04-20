@@ -234,6 +234,112 @@ legend("bottomleft",
        lwd    = 2, cex = 0.9, bty = "n")
 ```
 
+## Visualization 2.1: Re-hash of network to be more interpretable
+
+```{r}
+library(igraph)
+
+sig_pairs <- readr::read_tsv(
+  "~/github/oyster-lnc/output/18-lncRNA-mRNA-pearson/significant_lnc_mrna_pairs.tsv",
+  show_col_types = FALSE
+)
+
+edge_df <- sig_pairs %>%
+  dplyr::select(from = lnc_id, to = mrna_id, r, FDR)
+
+g <- graph_from_data_frame(edge_df, directed = FALSE)
+
+V(g)$type <- ifelse(V(g)$name %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+
+deg <- degree(g)
+
+set.seed(123)
+layout <- layout_with_fr(g, niter = 2000)
+
+V(g)$color <- ifelse(V(g)$type == "lncRNA", "#E63946", "#457B9D")
+
+V(g)$size <- ifelse(
+  V(g)$type == "lncRNA",
+  scales::rescale(log1p(deg), to = c(6, 18)),
+  scales::rescale(log1p(deg), to = c(4, 10))
+)
+
+E(g)$color <- ifelse(edge_df$r > 0, "#E63946AA", "#457B9DAA")
+E(g)$width <- 0.5
+
+png(file.path(out_dir, "coexpression_network_refined.png"),
+    width = 2400, height = 2400, res = 300)
+
+plot(
+  g,
+  layout = layout,
+  vertex.label = NA,
+  vertex.frame.color = NA,
+  edge.curved = 0.1
+)
+
+legend(
+  "topleft",
+  legend = c("lncRNA", "mRNA", "Positive correlation", "Negative correlation"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  bty = "n"
+)
+
+dev.off()
+```
+
+## Visualization 2.2: Network further refined to only strongest edges
+
+```{r}
+edges_filtered <- edges %>%
+  dplyr::filter(abs(r) >= 0.8)   # adjust threshold
+
+g <- graph_from_data_frame(edges_filtered, directed = FALSE)
+
+V(g)$type <- ifelse(V(g)$name %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+
+deg <- degree(g)
+
+set.seed(123)
+layout <- layout_with_fr(g, niter = 2000)
+
+V(g)$color <- ifelse(V(g)$type == "lncRNA", "#E63946", "#457B9D")
+
+V(g)$size <- ifelse(
+  V(g)$type == "lncRNA",
+  scales::rescale(log1p(deg), to = c(6, 18)),
+  scales::rescale(log1p(deg), to = c(4, 10))
+)
+
+E(g)$color <- ifelse(edge_df$r > 0, "#E63946AA", "#457B9DAA")
+E(g)$width <- 0.5
+
+png(file.path(out_dir, "coexpression_network_refined.png"),
+    width = 2400, height = 2400, res = 300)
+
+plot(
+  g,
+  layout = layout,
+  vertex.label = NA,
+  vertex.frame.color = NA,
+  edge.curved = 0.1
+)
+
+legend(
+  "topleft",
+  legend = c("lncRNA", "mRNA", "Positive correlation", "Negative correlation"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  bty = "n"
+)
+
+dev.off()
+```
+
+
 ## Visualization 3: Hub lncRNAs (Most Connections)
 
 ```{r hub-lncrnas}
