@@ -1,0 +1,13 @@
+cluster_label	component_id	n_pairs	n_lncRNAs	n_mRNAs
+A	1	67	1	67
+B	3	11	10	2
+C	2	6	4	3
+D	4	2	1	2
+E	11	2	1	2
+F	5	1	1	1
+G	6	1	1	1
+H	7	1	1	1
+I	8	1	1	1
+J	9	1	1	1
+K	10	1	1	1
+L	12	1	1	1
