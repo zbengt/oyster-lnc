@@ -1,0 +1,1284 @@
+---
+title: "18.2-lncRNA-mRNA-pearson"
+author: "Zach Bengtsson"
+date: "2026-04-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 10, fig.height = 8)
+```
+
+## Packages
+
+```{r packages}
+library(tidyverse)
+library(igraph)
+library(pheatmap)
+library(RColorBrewer)
+```
+
+## Output Directory
+
+```{r output-dir}
+out_dir <- "../output/18.2-lncRNA-mRNA-pearson"
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+## Load Count Matrices
+
+```{r load-data}
+data_dir <- "../data/15-pearsons"
+
+lnc_raw <- read_tsv(file.path(data_dir, "lnc_counts.tsv"), show_col_types = FALSE) %>%
+  rename(gene_id = 1)
+
+lnc_mat <- lnc_raw %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+
+mrna_file <- "~/github/oyster-lnc/output/11-mRNA-counts-DESeq2/kallisto_gene_counts.tsv"
+
+mrna_raw <- read_tsv(mrna_file, show_col_types = FALSE) %>%
+  rename(gene_id = 1)
+
+mrna_mat <- mrna_raw %>%
+  column_to_rownames("gene_id") %>%
+  as.matrix()
+```
+
+## Align Samples
+
+```{r align-samples}
+common_samples <- intersect(colnames(lnc_mat), colnames(mrna_mat))
+lnc_mat  <- lnc_mat[, common_samples, drop = FALSE]
+mrna_mat <- mrna_mat[, common_samples, drop = FALSE]
+n_samples <- length(common_samples)
+cat("Common samples:", n_samples, "\n")
+```
+
+## Filter Low-Expression Transcripts
+
+```{r filter-low-expression}
+min_count   <- 10
+min_samples <- 26
+
+filter_rows <- function(mat, min_count, min_samples) {
+  keep <- rowSums(mat >= min_count) >= min_samples
+  mat[keep, , drop = FALSE]
+}
+
+lnc_mat_f  <- filter_rows(lnc_mat,  min_count, min_samples)
+mrna_mat_f <- filter_rows(mrna_mat, min_count, min_samples)
+
+cat("lncRNAs after filtering:", nrow(lnc_mat_f), "\n")
+cat("mRNAs after filtering:", nrow(mrna_mat_f), "\n")
+```
+
+## Filter Transcripts That Do Not Change in Expression
+
+Remove transcripts with very low coefficient of variation (CV) across samples.
+This ensures we exclude pairs where neither the lncRNA nor the mRNA meaningfully
+varies, which would produce biologically uninformative correlations.
+
+```{r filter-flat-expression}
+cv_threshold <- 0.1
+
+compute_cv <- function(x) sd(x) / (mean(x) + 1e-9)
+
+lnc_cv  <- apply(lnc_mat_f,  1, compute_cv)
+mrna_cv <- apply(mrna_mat_f, 1, compute_cv)
+
+lnc_variable  <- lnc_mat_f[lnc_cv > cv_threshold, , drop = FALSE]
+mrna_variable <- mrna_mat_f[mrna_cv > cv_threshold, , drop = FALSE]
+
+cat("Variable lncRNAs (CV >", cv_threshold, "):", nrow(lnc_variable), "\n")
+cat("Variable mRNAs (CV >", cv_threshold, "):", nrow(mrna_variable), "\n")
+```
+
+## Log-Transform
+
+```{r log-transform}
+lnc_log  <- log2(lnc_variable + 1)
+mrna_log <- log2(mrna_variable + 1)
+```
+
+## Pearson Correlation
+
+```{r pearson-correlation}
+cor_mat <- cor(t(lnc_log), t(mrna_log),
+               method = "pearson", use = "pairwise.complete.obs")
+
+cat("Correlation matrix dimensions:", dim(cor_mat), "\n")
+```
+
+## Compute P-values and FDR
+
+```{r p-values}
+r_vals <- cor_mat
+r_vals[r_vals >  0.999999] <-  0.999999
+r_vals[r_vals < -0.999999] <- -0.999999
+
+t_vals <- r_vals * sqrt((n_samples - 2) / (1 - r_vals^2))
+p_vals <- 2 * pt(-abs(t_vals), df = n_samples - 2)
+
+coexp_df <- as.data.frame(as.table(cor_mat)) %>%
+  as_tibble() %>%
+  rename(lnc_id = Var1, mrna_id = Var2, r = Freq)
+
+p_df <- as.data.frame(as.table(p_vals)) %>%
+  as_tibble() %>%
+  rename(lnc_id = Var1, mrna_id = Var2, p_value = Freq)
+
+coexp_df <- coexp_df %>%
+  left_join(p_df, by = c("lnc_id", "mrna_id")) %>%
+  mutate(FDR = p.adjust(p_value, method = "BH"))
+```
+
+## Identify Significant Pairs
+
+```{r significant-pairs}
+r_threshold   <- 0.99
+fdr_threshold <- 0.05
+
+sig_pairs <- coexp_df %>%
+  filter(abs(r) >= r_threshold, FDR <= fdr_threshold) %>%
+  arrange(FDR, desc(abs(r)))
+
+cat("Significant lnc-mRNA pairs:", nrow(sig_pairs), "\n")
+cat("Unique lncRNAs in network:", n_distinct(sig_pairs$lnc_id), "\n")
+cat("Unique mRNAs in network:", n_distinct(sig_pairs$mrna_id), "\n")
+cat("Positive correlations:", sum(sig_pairs$r > 0), "\n")
+cat("Negative correlations:", sum(sig_pairs$r < 0), "\n")
+```
+
+## Export Significant Pairs Table
+
+```{r export-table}
+write_tsv(sig_pairs, file.path(out_dir, "significant_lnc_mrna_pairs_99.tsv"))
+```
+
+## Visualization 1: Correlation Distribution
+
+```{r correlation-histogram}
+p_hist <- ggplot(sig_pairs, aes(x = r)) +
+  geom_histogram(aes(fill = ifelse(r > 0, "Positive", "Negative")),
+                 bins = 50, color = "white", linewidth = 0.2) +
+  scale_fill_manual(values = c("Positive" = "#E63946", "Negative" = "#457B9D"),
+                    name = "Direction") +
+  labs(title = "Distribution of Significant lncRNA–mRNA Correlations",
+       subtitle = paste0("|r| ≥ ", r_threshold, ", FDR ≤ ", fdr_threshold),
+       x = "Pearson r", y = "Count") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+
+print(p_hist)
+ggsave(file.path(out_dir, "correlation_distribution_99.png"), p_hist,
+       width = 8, height = 5, dpi = 300)
+```
+
+## Visualization 2: Network of All Significant Interactions
+
+```{r network-plot, fig.width=14, fig.height=14}
+edges <- sig_pairs %>%
+  select(lnc_id, mrna_id, r, FDR) %>%
+  mutate(direction = ifelse(r > 0, "positive", "negative"))
+
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+node_names <- V(g)$name
+node_type  <- ifelse(node_names %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+V(g)$type  <- node_type
+
+V(g)$color <- ifelse(node_type == "lncRNA", "#E63946", "#457B9D")
+V(g)$frame.color <- ifelse(node_type == "lncRNA", "#9D0208", "#1D3557")
+V(g)$size  <- ifelse(node_type == "lncRNA",
+                     pmin(degree(g) * 1.2 + 4, 20),
+                     pmin(degree(g) * 0.8 + 3, 15))
+V(g)$label.cex <- 0.35
+V(g)$label.color <- "gray20"
+
+E(g)$color <- ifelse(edges$direction == "positive",
+                     adjustcolor("#E63946", alpha.f = 0.3),
+                     adjustcolor("#457B9D", alpha.f = 0.3))
+E(g)$width <- abs(edges$r) * 2
+
+set.seed(42)
+layout <- layout_with_fr(g)
+
+png(file.path(out_dir, "coexpression_network_99.png"), width = 2400, height = 2400, res = 200)
+par(mar = c(1, 1, 3, 1))
+plot(g, layout = layout,
+     vertex.label = NA,
+     edge.curved = 0.1,
+     main = "lncRNA–mRNA Co-expression Network")
+legend("bottomleft",
+       legend = c("lncRNA", "mRNA", "Positive r", "Negative r"),
+       col    = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+       pch    = c(16, 16, NA, NA),
+       lty    = c(NA, NA, 1, 1),
+       lwd    = 2, cex = 0.9, bty = "n")
+dev.off()
+
+par(mar = c(1, 1, 3, 1))
+plot(g, layout = layout,
+     vertex.label = NA,
+     edge.curved = 0.1,
+     main = "lncRNA–mRNA Co-expression Network")
+legend("bottomleft",
+       legend = c("lncRNA", "mRNA", "Positive r", "Negative r"),
+       col    = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+       pch    = c(16, 16, NA, NA),
+       lty    = c(NA, NA, 1, 1),
+       lwd    = 2, cex = 0.9, bty = "n")
+```
+
+## Visualization 2.1: Re-hash of network to be more interpretable
+
+```{r}
+library(igraph)
+
+sig_pairs <- readr::read_tsv(
+  "~/github/oyster-lnc/output/18.1-lncRNA-mRNA-pearson/significant_lnc_mrna_pairs.tsv",
+  show_col_types = FALSE
+)
+
+edge_df <- sig_pairs %>%
+  dplyr::select(from = lnc_id, to = mrna_id, r, FDR)
+
+g <- graph_from_data_frame(edge_df, directed = FALSE)
+
+V(g)$type <- ifelse(V(g)$name %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+
+deg <- degree(g)
+
+set.seed(123)
+layout <- layout_with_fr(g, niter = 2000)
+
+V(g)$color <- ifelse(V(g)$type == "lncRNA", "#E63946", "#457B9D")
+
+V(g)$size <- ifelse(
+  V(g)$type == "lncRNA",
+  scales::rescale(log1p(deg), to = c(6, 18)),
+  scales::rescale(log1p(deg), to = c(4, 10))
+)
+
+E(g)$color <- ifelse(edge_df$r > 0, "#E63946AA", "#457B9DAA")
+E(g)$width <- 0.5
+
+png(file.path(out_dir, "coexpression_network_refined.png"),
+    width = 2400, height = 2400, res = 300)
+
+plot(
+  g,
+  layout = layout,
+  vertex.label = NA,
+  vertex.frame.color = NA,
+  edge.curved = 0.1
+)
+
+legend(
+  "topleft",
+  legend = c("lncRNA", "mRNA", "Positive correlation", "Negative correlation"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  bty = "n"
+)
+
+dev.off()
+```
+
+## Visualization 2.2: Network further refined to only strongest edges
+
+```{r}
+edges_filtered <- edges %>%
+  dplyr::filter(abs(r) >= 0.8)   # adjust threshold
+
+g <- graph_from_data_frame(edges_filtered, directed = FALSE)
+
+V(g)$type <- ifelse(V(g)$name %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+
+deg <- degree(g)
+
+set.seed(123)
+layout <- layout_with_fr(g, niter = 2000)
+
+V(g)$color <- ifelse(V(g)$type == "lncRNA", "#E63946", "#457B9D")
+
+V(g)$size <- ifelse(
+  V(g)$type == "lncRNA",
+  scales::rescale(log1p(deg), to = c(6, 18)),
+  scales::rescale(log1p(deg), to = c(4, 10))
+)
+
+E(g)$color <- ifelse(edge_df$r > 0, "#E63946AA", "#457B9DAA")
+E(g)$width <- 0.5
+
+png(file.path(out_dir, "coexpression_network_refined.png"),
+    width = 2400, height = 2400, res = 300)
+
+plot(
+  g,
+  layout = layout,
+  vertex.label = NA,
+  vertex.frame.color = NA,
+  edge.curved = 0.1
+)
+
+legend(
+  "topleft",
+  legend = c("lncRNA", "mRNA", "Positive correlation", "Negative correlation"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  bty = "n"
+)
+
+dev.off()
+```
+
+
+## Visualization 3: Hub lncRNAs (Most Connections)
+
+```{r hub-lncrnas}
+lnc_degree <- sig_pairs %>%
+  count(lnc_id, name = "n_targets") %>%
+  arrange(desc(n_targets))
+
+top_hubs <- head(lnc_degree, 20)
+
+p_hubs <- ggplot(top_hubs, aes(x = reorder(lnc_id, n_targets), y = n_targets)) +
+  geom_col(fill = "#E63946", alpha = 0.85) +
+  coord_flip() +
+  labs(title = "Top 20 Hub lncRNAs by Number of Correlated mRNAs",
+       x = NULL, y = "Number of significantly correlated mRNAs") +
+  theme_minimal(base_size = 12)
+
+print(p_hubs)
+ggsave(file.path(out_dir, "hub_lncrnas.png"), p_hubs,
+       width = 10, height = 7, dpi = 300)
+
+write_tsv(lnc_degree, file.path(out_dir, "lncrna_degree_table_99.tsv"))
+```
+
+## Visualization 4: Heatmap of Top Correlations
+
+```{r heatmap, fig.width=12, fig.height=10}
+top_lnc <- lnc_degree %>% head(15) %>% pull(lnc_id)
+
+top_mrna <- sig_pairs %>%
+  filter(lnc_id %in% top_lnc) %>%
+  count(mrna_id, name = "n_lnc") %>%
+  arrange(desc(n_lnc)) %>%
+  head(40) %>%
+  pull(mrna_id)
+
+heatmap_data <- cor_mat[as.character(top_lnc), as.character(top_mrna), drop = FALSE]
+
+png(file.path(out_dir, "correlation_heatmap.png"), width = 2000, height = 1600, res = 200)
+pheatmap(heatmap_data,
+         color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
+         breaks = seq(-1, 1, length.out = 101),
+         cluster_rows = TRUE, cluster_cols = TRUE,
+         fontsize_row = 7, fontsize_col = 6,
+         main = "Pearson Correlation: Top Hub lncRNAs vs. Associated mRNAs",
+         angle_col = 45)
+dev.off()
+
+pheatmap(heatmap_data,
+         color = colorRampPalette(rev(brewer.pal(11, "RdBu")))(100),
+         breaks = seq(-1, 1, length.out = 101),
+         cluster_rows = TRUE, cluster_cols = TRUE,
+         fontsize_row = 7, fontsize_col = 6,
+         main = "Pearson Correlation: Top Hub lncRNAs vs. Associated mRNAs",
+         angle_col = 45)
+```
+
+## Visualization 5: Individual Scatter Plots
+
+This function generates a scatter plot of log count data for any
+lncRNA–mRNA pair.
+
+```{r scatter-function}
+plot_pair_log <- function(lnc_id_sel, mrna_id_sel,
+                          lnc_mat_source = lnc_log,
+                          mrna_mat_source = mrna_log,
+                          samples = common_samples) {
+
+  df <- tibble::tibble(
+    sample = samples,
+    lnc_expr  = as.numeric(lnc_mat_source[lnc_id_sel, samples]),
+    mrna_expr = as.numeric(mrna_mat_source[mrna_id_sel, samples])
+  )
+
+  r_val <- cor(df$lnc_expr, df$mrna_expr,
+               method = "pearson",
+               use = "pairwise.complete.obs")
+
+  ggplot2::ggplot(df, ggplot2::aes(x = lnc_expr, y = mrna_expr)) +
+    ggplot2::geom_point(size = 3, alpha = 0.75, color = "#264653") +
+    ggplot2::geom_smooth(
+      method = "lm",
+      se = TRUE,
+      color = "#E76F51",
+      fill = "#E76F51",
+      alpha = 0.15
+    ) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sample),
+      size = 2.5,
+      nudge_y = max(df$mrna_expr, na.rm = TRUE) * 0.03,
+      color = "gray40"
+    ) +
+    ggplot2::labs(
+      title = paste0(lnc_id_sel, " vs ", mrna_id_sel),
+      subtitle = sprintf(
+        "Pearson r = %.3f  (log2-transformed counts, n = %d samples)",
+        r_val, nrow(df)
+      ),
+      x = paste("lncRNA expression:", lnc_id_sel),
+      y = paste("mRNA expression:", mrna_id_sel)
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 11))
+}
+```
+
+### Save Individual Scatter Plots for All Significant Pairs
+
+```{r scatter-save-all}
+scatter_dir <- file.path(out_dir, "scatter_plots")
+dir.create(scatter_dir, recursive = TRUE, showWarnings = FALSE)
+
+n_to_save <- min(nrow(sig_pairs), 100)
+cat("Saving", n_to_save, "individual scatter plots...\n")
+
+for (i in seq_len(n_to_save)) {
+  row <- sig_pairs[i, ]
+  p <- plot_pair_log(row$lnc_id, row$mrna_id)
+  fname <- paste0(gsub("[^A-Za-z0-9_.-]", "_", row$lnc_id),
+                  "_vs_",
+                  gsub("[^A-Za-z0-9_.-]", "_", row$mrna_id),
+                  ".png")
+  ggsave(file.path(scatter_dir, fname), p, width = 7, height = 5, dpi = 200)
+}
+
+cat("Scatter plots saved to:", scatter_dir, "\n")
+```
+
+## Summary Statistics
+
+```{r summary}
+cat("=== Analysis Summary ===\n")
+cat("Input lncRNAs:", nrow(lnc_mat), "\n")
+cat("Input mRNAs:", nrow(mrna_mat), "\n")
+cat("After low-expression filter: lncRNAs =", nrow(lnc_mat_f),
+    ", mRNAs =", nrow(mrna_mat_f), "\n")
+cat("After expression-variability filter: lncRNAs =", nrow(lnc_variable),
+    ", mRNAs =", nrow(mrna_variable), "\n")
+cat("Total pairs tested:", nrow(coexp_df), "\n")
+cat("Significant pairs (|r| >=", r_threshold, ", FDR <=", fdr_threshold, "):",
+    nrow(sig_pairs), "\n")
+cat("Unique lncRNAs with significant associations:", n_distinct(sig_pairs$lnc_id), "\n")
+cat("Unique mRNAs with significant associations:", n_distinct(sig_pairs$mrna_id), "\n")
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```
+
+## Hub tables
+
+```{r}
+lnc_hub_table <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_mRNAs_correlated") %>%
+  dplyr::arrange(desc(n_mRNAs_correlated))
+
+lnc_hub_table
+```
+
+```{r}
+readr::write_tsv(
+  lnc_hub_table,
+  file.path(out_dir, "lncRNA_hub_table.tsv")
+)
+```
+
+```{r}
+mrna_hub_table <- sig_pairs %>%
+  dplyr::count(mrna_id, name = "n_lncRNAs_correlated") %>%
+  dplyr::arrange(desc(n_lncRNAs_correlated))
+
+mrna_hub_table
+```
+
+```{r}
+readr::write_tsv(
+  mrna_hub_table,
+  file.path(out_dir, "mRNA_hub_table.tsv")
+)
+```
+
+```{bash}
+cd ~/github/oyster-lnc/output/18.1-lncRNA-mRNA-pearson/scatter_plots
+convert -delay 50 -loop 0 *.png ../scatter_plots.gif
+```
+
+### Get scatter points color coded by sex
+
+```{r}
+plot_pair_log_sex <- function(lnc_id_sel, mrna_id_sel,
+                              lnc_mat_source = lnc_log,
+                              mrna_mat_source = mrna_log,
+                              samples = common_samples) {
+
+  df <- tibble::tibble(
+    sample = samples,
+    lnc_expr  = as.numeric(lnc_mat_source[lnc_id_sel, samples]),
+    mrna_expr = as.numeric(mrna_mat_source[mrna_id_sel, samples])
+  ) %>%
+    dplyr::mutate(
+      sex = ifelse(grepl("M$", sample), "Male",
+                   ifelse(grepl("F$", sample), "Female", NA))
+    )
+
+  r_val <- cor(df$lnc_expr, df$mrna_expr,
+               method = "pearson",
+               use = "pairwise.complete.obs")
+
+  ggplot2::ggplot(df, ggplot2::aes(x = lnc_expr, y = mrna_expr, color = sex)) +
+    ggplot2::geom_point(size = 3, alpha = 0.85) +
+    ggplot2::geom_smooth(
+      method = "lm",
+      se = TRUE,
+      color = "black",
+      fill = "gray70",
+      alpha = 0.2
+    ) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sample),
+      size = 2.5,
+      nudge_y = max(df$mrna_expr, na.rm = TRUE) * 0.03,
+      color = "gray40"
+    ) +
+    ggplot2::scale_color_manual(
+      values = c("Male" = "#457B9D", "Female" = "#E63946")
+    ) +
+    ggplot2::labs(
+      title = paste0(lnc_id_sel, " vs ", mrna_id_sel),
+      subtitle = sprintf(
+        "Pearson r = %.3f  (log2-transformed counts, n = %d samples)",
+        r_val, nrow(df)
+      ),
+      x = paste("lncRNA expression:", lnc_id_sel),
+      y = paste("mRNA expression:", mrna_id_sel),
+      color = "Sex"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 11))
+}
+```
+
+```{r}
+scatter_dir_sex <- file.path(out_dir, "scatter_plots_by_sex")
+dir.create(scatter_dir_sex, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r}
+n_to_save <- min(nrow(sig_pairs), 100)
+cat("Saving", n_to_save, "sex-colored scatter plots...\n")
+
+for (i in seq_len(n_to_save)) {
+  row <- sig_pairs[i, ]
+  p <- plot_pair_log_sex(row$lnc_id, row$mrna_id)
+
+  fname <- paste0(
+    gsub("[^A-Za-z0-9_.-]", "_", row$lnc_id),
+    "_vs_",
+    gsub("[^A-Za-z0-9_.-]", "_", row$mrna_id),
+    "_sex.png"   # <-- helpful suffix
+  )
+
+  ggsave(file.path(scatter_dir_sex, fname),
+         p, width = 7, height = 5, dpi = 200)
+}
+
+cat("Sex-colored scatter plots saved to:", scatter_dir_sex, "\n")
+```
+
+```{bash}
+cd ~/github/oyster-lnc/output/18.2-lncRNA-mRNA-pearson/scatter_plots_by_sex 
+convert -delay 50 -loop 0 *.png ../scatter_plots_by_sex.gif
+```
+
+### Examine unusually large lncRNA hub
+
+```{r}
+## ---------------------------
+## Inspect top lncRNA hub expression
+## ---------------------------
+
+# Identify top lncRNA hub
+top_lnc_hub <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_mRNAs_correlated") %>%
+  dplyr::arrange(dplyr::desc(n_mRNAs_correlated)) %>%
+  dplyr::slice_head(n = 1)
+
+top_lnc_id <- top_lnc_hub$lnc_id[1]
+top_lnc_id
+top_lnc_hub
+
+# Pull all mRNAs correlated with this lncRNA
+top_lnc_edges <- sig_pairs %>%
+  dplyr::filter(lnc_id == top_lnc_id) %>%
+  dplyr::arrange(dplyr::desc(abs(r)))
+
+top_lnc_mrnas <- unique(top_lnc_edges$mrna_id)
+
+length(top_lnc_mrnas)
+```
+
+```{r}
+## ---------------------------
+## Expression summary for the lncRNA hub
+## ---------------------------
+
+lnc_expr_summary <- tibble::tibble(
+  transcript_id = top_lnc_id,
+  type = "lncRNA",
+  mean_log_expr = mean(as.numeric(lnc_log[top_lnc_id, common_samples]), na.rm = TRUE),
+  sd_log_expr   = sd(as.numeric(lnc_log[top_lnc_id, common_samples]), na.rm = TRUE),
+  cv_log_expr   = sd_log_expr / (mean_log_expr + 1e-9),
+  min_log_expr  = min(as.numeric(lnc_log[top_lnc_id, common_samples]), na.rm = TRUE),
+  max_log_expr  = max(as.numeric(lnc_log[top_lnc_id, common_samples]), na.rm = TRUE),
+  range_log_expr = max_log_expr - min_log_expr
+)
+
+lnc_expr_summary
+```
+```{r}
+## ---------------------------
+## Expression summary for associated mRNAs
+## ---------------------------
+
+mrna_expr_summary <- purrr::map_dfr(top_lnc_mrnas, function(gene) {
+  x <- as.numeric(mrna_log[gene, common_samples])
+
+  tibble::tibble(
+    transcript_id = gene,
+    type = "mRNA",
+    mean_log_expr = mean(x, na.rm = TRUE),
+    sd_log_expr = sd(x, na.rm = TRUE),
+    cv_log_expr = sd_log_expr / (mean_log_expr + 1e-9),
+    min_log_expr = min(x, na.rm = TRUE),
+    max_log_expr = max(x, na.rm = TRUE),
+    range_log_expr = max_log_expr - min_log_expr
+  )
+})
+
+mrna_expr_summary %>%
+  dplyr::arrange(cv_log_expr)
+```
+
+```{r}
+hub_target_expression_table <- top_lnc_edges %>%
+  dplyr::left_join(
+    mrna_expr_summary,
+    by = c("mrna_id" = "transcript_id")
+  )
+
+readr::write_tsv(
+  hub_target_expression_table,
+  file.path(out_dir, paste0("top_lnc_hub_", gsub("[^A-Za-z0-9_.-]", "_", top_lnc_id), "_target_expression_summary.tsv"))
+)
+
+readr::write_tsv(
+  lnc_expr_summary,
+  file.path(out_dir, paste0("top_lnc_hub_", gsub("[^A-Za-z0-9_.-]", "_", top_lnc_id), "_expression_summary.tsv"))
+)
+```
+
+```{r}
+ggplot2::ggplot(mrna_expr_summary, ggplot2::aes(x = cv_log_expr)) +
+  ggplot2::geom_histogram(bins = 30) +
+  ggplot2::theme_minimal() +
+  ggplot2::labs(
+    title = paste("CV distribution of mRNAs correlated with", top_lnc_id),
+    x = "CV of log2(count + 1) expression",
+    y = "Number of mRNAs"
+  )
+```
+
+```{r}
+hub_expression_matrix <- dplyr::bind_rows(
+  tibble::tibble(
+    transcript_id = top_lnc_id,
+    type = "lncRNA",
+    as.list(as.numeric(lnc_log[top_lnc_id, common_samples]))
+  ),
+  mrna_log[top_lnc_mrnas, common_samples, drop = FALSE] %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("transcript_id") %>%
+    dplyr::mutate(type = "mRNA")
+)
+
+colnames(hub_expression_matrix)[3:ncol(hub_expression_matrix)] <- common_samples
+
+readr::write_tsv(
+  hub_expression_matrix,
+  file.path(out_dir, paste0("top_lnc_hub_", gsub("[^A-Za-z0-9_.-]", "_", top_lnc_id), "_expression_matrix.tsv"))
+)
+```
+
+```{r}
+df_lnc <- tibble(
+  sample = common_samples,
+  expr = as.numeric(lnc_log["rna-XR_002638603.1", common_samples])
+)
+
+ggplot(df_lnc, aes(x = sample, y = expr)) +
+  geom_point() +
+  geom_line(group = 1) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+```{r}
+## ---------------------------
+## Histograms of expression for mRNAs correlated with top lncRNA hub
+## ---------------------------
+
+# Use the top lncRNA hub you already identified
+top_lnc_id <- "rna-XR_002638603.1"
+
+# Get correlated mRNAs
+top_lnc_mrnas <- sig_pairs %>%
+  dplyr::filter(lnc_id == top_lnc_id) %>%
+  dplyr::pull(mrna_id) %>%
+  unique()
+
+# Convert expression matrix to long format
+mrna_expr_long <- mrna_log[top_lnc_mrnas, common_samples, drop = FALSE] %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column("mrna_id") %>%
+  tidyr::pivot_longer(
+    cols = -mrna_id,
+    names_to = "sample",
+    values_to = "expr"
+  )
+
+# Plot histograms for all correlated mRNAs
+p_mrna_hist <- ggplot2::ggplot(mrna_expr_long, ggplot2::aes(x = expr)) +
+  ggplot2::geom_histogram(bins = 10, fill = "gray50", color = "white") +
+  ggplot2::facet_wrap(~ mrna_id, scales = "free_y") +
+  ggplot2::theme_minimal(base_size = 10) +
+  ggplot2::labs(
+    title = paste("Expression distributions of mRNAs correlated with", top_lnc_id),
+    x = "log2(count + 1) expression",
+    y = "Number of samples"
+  )
+
+p_mrna_hist
+```
+
+```{r}
+## ---------------------------
+## Per-mRNA sample expression bar plots
+## ---------------------------
+
+mrna_barplot_dir <- file.path(out_dir, "mrna_sample_expression_barplots")
+dir.create(mrna_barplot_dir, recursive = TRUE, showWarnings = FALSE)
+
+top_lnc_id <- "rna-XR_002638603.1"
+
+top_lnc_mrnas <- sig_pairs %>%
+  dplyr::filter(lnc_id == top_lnc_id) %>%
+  dplyr::arrange(dplyr::desc(abs(r))) %>%
+  dplyr::pull(mrna_id) %>%
+  unique()
+
+cat("Saving sample-level expression barplots for", length(top_lnc_mrnas), "mRNAs...\n")
+
+for (mrna in top_lnc_mrnas) {
+
+  df <- tibble::tibble(
+    sample = factor(common_samples, levels = common_samples),
+    expr = as.numeric(mrna_log[mrna, common_samples])
+  )
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = sample, y = expr)) +
+    ggplot2::geom_col(fill = "gray50") +
+    ggplot2::labs(
+      title = mrna,
+      subtitle = paste("Expression across samples for mRNA correlated with", top_lnc_id),
+      x = "Sample",
+      y = "log2(count + 1) expression"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5),
+      plot.title = ggplot2::element_text(size = 11)
+    )
+
+  fname <- paste0(gsub("[^A-Za-z0-9_.-]", "_", mrna), ".png")
+
+  ggplot2::ggsave(
+    file.path(mrna_barplot_dir, fname),
+    p,
+    width = 7,
+    height = 4,
+    dpi = 200
+  )
+}
+
+cat("Saved to:", mrna_barplot_dir, "\n")
+```
+
+```{r}
+## ---------------------------
+## Per-mRNA sample expression bar plots: raw counts
+## ---------------------------
+
+mrna_raw_barplot_dir <- file.path(out_dir, "mrna_sample_expression_barplots_raw_counts")
+dir.create(mrna_raw_barplot_dir, recursive = TRUE, showWarnings = FALSE)
+
+top_lnc_id <- "rna-XR_002638603.1"
+
+top_lnc_mrnas <- sig_pairs %>%
+  dplyr::filter(lnc_id == top_lnc_id) %>%
+  dplyr::arrange(dplyr::desc(abs(r))) %>%
+  dplyr::pull(mrna_id) %>%
+  unique()
+
+cat("Saving raw-count sample-level expression barplots for", length(top_lnc_mrnas), "mRNAs...\n")
+
+for (mrna in top_lnc_mrnas) {
+
+  df <- tibble::tibble(
+    sample = factor(common_samples, levels = common_samples),
+    expr = as.numeric(mrna_variable[mrna, common_samples])
+  )
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = sample, y = expr)) +
+    ggplot2::geom_col(fill = "gray50") +
+    ggplot2::labs(
+      title = mrna,
+      subtitle = paste("Raw count expression across samples for mRNA correlated with", top_lnc_id),
+      x = "Sample",
+      y = "Raw count expression"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5),
+      plot.title = ggplot2::element_text(size = 11)
+    )
+
+  fname <- paste0(gsub("[^A-Za-z0-9_.-]", "_", mrna), ".png")
+
+  ggplot2::ggsave(
+    file.path(mrna_raw_barplot_dir, fname),
+    p,
+    width = 7,
+    height = 4,
+    dpi = 200
+  )
+}
+
+cat("Saved to:", mrna_raw_barplot_dir, "\n")
+```
+
+### GIFs of expression barplots for mRNAs
+
+```{bash}
+cd ~/github/oyster-lnc/output/18.2-lncRNA-mRNA-pearson/mrna_sample_expression_barplots
+
+convert -delay 50 -loop 0 $(ls *.png | sort) ../mrna_sample_expression_barplots.gif
+```
+```{bash}
+cd ~/github/oyster-lnc/output/18.2-lncRNA-mRNA-pearson/mrna_sample_expression_barplots_raw_counts
+
+convert -delay 50 -loop 0 $(ls *.png | sort) ../mrna_sample_expression_barplots_raw_counts.gif
+```
+
+### GO enrichment for 0.99 threshold dataset
+
+```{r}
+## ---------------------------
+## GO enrichment: Biological Process only
+## For r >= 0.99 sig_pairs dataset
+## ---------------------------
+
+library(tidyverse)
+library(clusterProfiler)
+library(enrichplot)
+
+out_dir <- "../output/18.2-lncRNA-mRNA-pearson"
+go99_dir <- file.path(out_dir, "GO_BP_r099")
+dir.create(go99_dir, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r}
+## ---------------------------
+## Restrict GO annotation to Biological Process
+## ---------------------------
+
+gene2go_bp <- gene2go %>%
+  dplyr::filter(Category == "Process") %>%   # NCBI gene2go BP category
+  dplyr::mutate(GeneID = as.character(GeneID)) %>%
+  dplyr::distinct(GeneID, GO_ID, GO_term, Category)
+
+term2gene_bp <- gene2go_bp %>%
+  dplyr::transmute(term = GO_ID, gene = GeneID) %>%
+  dplyr::distinct()
+
+term2name_bp <- gene2go_bp %>%
+  dplyr::transmute(term = GO_ID, name = GO_term) %>%
+  dplyr::distinct()
+```
+
+```{r}
+### Check
+gene2go %>%
+  dplyr::count(Category)
+```
+
+```{r}
+## ---------------------------
+## Define mRNA hubs from r >= 0.99 network
+## ---------------------------
+
+mrna_degree_099 <- sig_pairs %>%
+  dplyr::count(mrna_id, name = "n_lncRNAs_correlated") %>%
+  dplyr::arrange(dplyr::desc(n_lncRNAs_correlated))
+
+hub_cutoff_mrna_099 <- quantile(
+  mrna_degree_099$n_lncRNAs_correlated,
+  probs = 0.9
+)
+
+hub_mrnas_099 <- mrna_degree_099 %>%
+  dplyr::filter(n_lncRNAs_correlated >= hub_cutoff_mrna_099)
+
+readr::write_tsv(
+  mrna_degree_099,
+  file.path(go99_dir, "mRNA_degree_r099.tsv")
+)
+
+readr::write_tsv(
+  hub_mrnas_099,
+  file.path(go99_dir, "hub_mRNAs_top10percent_r099.tsv")
+)
+```
+
+```{r}
+## ---------------------------
+## Map hub mRNAs to GeneIDs
+## ---------------------------
+
+hub_gene_ids_099 <- hub_mrnas_099 %>%
+  dplyr::left_join(
+    id_map %>% dplyr::select(mrna_id, GeneID),
+    by = "mrna_id"
+  ) %>%
+  dplyr::filter(!is.na(GeneID)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+```
+
+```{r}
+### Redefine universe
+mrna_universe_ids <- rownames(mrna_variable)
+
+gene_universe_bp <- id_map %>%
+  dplyr::filter(mrna_id %in% mrna_universe_ids, !is.na(GeneID)) %>%
+  dplyr::pull(GeneID) %>%
+  unique()
+```
+
+```{r}
+### Run enrichment
+
+ego_hubs_bp_099 <- clusterProfiler::enricher(
+  gene          = hub_gene_ids_099,
+  universe      = gene_universe_bp,
+  TERM2GENE     = term2gene_bp,
+  TERM2NAME     = term2name_bp,
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05,
+  minGSSize     = 10,
+  maxGSSize     = 500
+)
+
+ego_hubs_bp_099_df <- as.data.frame(ego_hubs_bp_099)
+
+readr::write_tsv(
+  ego_hubs_bp_099_df,
+  file.path(go99_dir, "GO_BP_enrichment_hub_mRNAs_r099.tsv")
+)
+```
+
+```{r}
+if (!is.null(ego_hubs_bp_099) && nrow(as.data.frame(ego_hubs_bp_099)) > 0) {
+
+  p_bp_099 <- enrichplot::dotplot(
+    ego_hubs_bp_099,
+    showCategory = 20
+  ) +
+    ggplot2::ggtitle("Biological Process GO enrichment of hub mRNAs, |r| ≥ 0.99")
+
+  ggplot2::ggsave(
+    file.path(go99_dir, "GO_BP_dotplot_hub_mRNAs_r099.png"),
+    p_bp_099,
+    width = 10,
+    height = 7,
+    dpi = 300
+  )
+
+  p_bp_099
+}
+```
+
+```{r}
+top_lnc_099 <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_targets") %>%
+  dplyr::arrange(dplyr::desc(n_targets)) %>%
+  dplyr::slice_head(n = 5) %>%
+  dplyr::pull(lnc_id)
+
+lnc_bp_results_099 <- list()
+
+for (lnc in top_lnc_099) {
+
+  target_gene_ids <- sig_pairs %>%
+    dplyr::filter(lnc_id == lnc) %>%
+    dplyr::left_join(
+      id_map %>% dplyr::select(mrna_id, GeneID),
+      by = "mrna_id"
+    ) %>%
+    dplyr::filter(!is.na(GeneID)) %>%
+    dplyr::pull(GeneID) %>%
+    unique()
+
+  if (length(target_gene_ids) < 10) next
+
+  ego_lnc_bp <- clusterProfiler::enricher(
+    gene          = target_gene_ids,
+    universe      = gene_universe_bp,
+    TERM2GENE     = term2gene_bp,
+    TERM2NAME     = term2name_bp,
+    pAdjustMethod = "BH",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05,
+    minGSSize     = 10,
+    maxGSSize     = 500
+  )
+
+  if (!is.null(ego_lnc_bp) && nrow(as.data.frame(ego_lnc_bp)) > 0) {
+
+    ego_lnc_bp_df <- as.data.frame(ego_lnc_bp) %>%
+      dplyr::mutate(lnc_id = lnc)
+
+    lnc_bp_results_099[[lnc]] <- ego_lnc_bp_df
+
+    safe_name <- gsub("[^A-Za-z0-9_.-]", "_", lnc)
+
+    p_lnc_bp <- enrichplot::dotplot(
+      ego_lnc_bp,
+      showCategory = 12
+    ) +
+      ggplot2::ggtitle(paste("BP GO enrichment for targets of", lnc))
+
+    ggplot2::ggsave(
+      file.path(go99_dir, paste0("GO_BP_dotplot_", safe_name, "_r099.png")),
+      p_lnc_bp,
+      width = 10,
+      height = 6,
+      dpi = 300
+    )
+  }
+}
+
+if (length(lnc_bp_results_099) > 0) {
+  all_lnc_bp_099 <- dplyr::bind_rows(lnc_bp_results_099)
+
+  readr::write_tsv(
+    all_lnc_bp_099,
+    file.path(go99_dir, "GO_BP_enrichment_top_lnc_modules_r099.tsv")
+  )
+}
+```
+
+### Mapping Check
+
+```{r}
+mrna_ids <- rownames(mrna_variable)
+
+mapping_df <- tibble(mrna_id = mrna_ids) %>%
+  left_join(id_map, by = "mrna_id")
+
+n_total <- nrow(mapping_df)
+n_mapped <- sum(!is.na(mapping_df$GeneID))
+
+percent_mapped <- (n_mapped / n_total) * 100
+
+cat("Total mRNAs:", n_total, "\n")
+cat("Mapped to GeneID:", n_mapped, "\n")
+cat("Percent mapped:", round(percent_mapped, 2), "%\n")
+```
+
+```{r}
+sig_mrnas <- sig_pairs %>%
+  pull(mrna_id) %>%
+  unique()
+
+mapping_sig <- tibble(mrna_id = sig_mrnas) %>%
+  left_join(id_map, by = "mrna_id")
+
+n_total_sig <- nrow(mapping_sig)
+n_mapped_sig <- sum(!is.na(mapping_sig$GeneID))
+
+percent_mapped_sig <- (n_mapped_sig / n_total_sig) * 100
+
+cat("Significant mRNAs:", n_total_sig, "\n")
+cat("Mapped to GeneID:", n_mapped_sig, "\n")
+cat("Percent mapped:", round(percent_mapped_sig, 2), "%\n")
+```
+
+```{r}
+mapped_gene_ids <- mapping_sig %>%
+  filter(!is.na(GeneID)) %>%
+  pull(GeneID)
+
+genes_with_go <- gene2go %>%
+  filter(GeneID %in% mapped_gene_ids) %>%
+  pull(GeneID) %>%
+  unique()
+
+n_with_go <- length(genes_with_go)
+
+percent_with_go <- (n_with_go / length(mapped_gene_ids)) * 100
+
+cat("Mapped genes:", length(mapped_gene_ids), "\n")
+cat("With GO terms:", n_with_go, "\n")
+cat("Percent with GO:", round(percent_with_go, 2), "%\n")
+```
+
+```{r}
+gene2go_bp <- gene2go %>%
+  filter(Category == "Process")
+
+genes_with_bp <- gene2go_bp %>%
+  filter(GeneID %in% mapped_gene_ids) %>%
+  pull(GeneID) %>%
+  unique()
+
+percent_with_bp <- (length(genes_with_bp) / length(mapped_gene_ids)) * 100
+
+cat("Percent with BP GO terms:", round(percent_with_bp, 2), "%\n")
+```
+
+```{r}
+## ---------------------------
+## Number of correlated lncRNAs per mRNA
+## ---------------------------
+
+mrna_lnc_degree <- sig_pairs %>%
+  dplyr::count(mrna_id, name = "n_correlated_lncRNAs") %>%
+  dplyr::arrange(dplyr::desc(n_correlated_lncRNAs))
+
+readr::write_tsv(
+  mrna_lnc_degree,
+  file.path(out_dir, "mRNA_correlated_lncRNA_counts.tsv")
+)
+
+p_mrna_lnc_degree <- ggplot2::ggplot(
+  mrna_lnc_degree,
+  ggplot2::aes(x = n_correlated_lncRNAs)
+) +
+  ggplot2::geom_histogram(bins = 30, fill = "gray50", color = "white") +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::labs(
+    title = "Number of correlated lncRNAs per mRNA",
+    subtitle = paste0("Significant pairs: |r| ≥ ", r_threshold, ", FDR ≤ ", fdr_threshold),
+    x = "Number of correlated lncRNAs",
+    y = "Number of mRNAs"
+  )
+
+p_mrna_lnc_degree
+
+ggplot2::ggsave(
+  file.path(out_dir, "mRNA_correlated_lncRNA_count_distribution.png"),
+  p_mrna_lnc_degree,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+```{r}
+lnc_mrna_degree <- sig_pairs %>%
+  dplyr::count(lnc_id, name = "n_correlated_mRNAs") %>%
+  dplyr::arrange(dplyr::desc(n_correlated_mRNAs))
+
+readr::write_tsv(
+  lnc_mrna_degree,
+  file.path(out_dir, "lncRNA_correlated_mRNA_counts.tsv")
+)
+```
+
+```{r}
+p_lnc_degree <- ggplot2::ggplot(
+  lnc_mrna_degree,
+  ggplot2::aes(x = n_correlated_mRNAs)
+) +
+  ggplot2::geom_histogram(bins = 30, fill = "#E63946", color = "white") +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::labs(
+    title = "Number of correlated mRNAs per lncRNA",
+    subtitle = paste0("Significant pairs: |r| ≥ ", r_threshold, ", FDR ≤ ", fdr_threshold),
+    x = "Number of correlated mRNAs",
+    y = "Number of lncRNAs"
+  )
+
+p_lnc_degree
+
+ggplot2::ggsave(
+  file.path(out_dir, "lncRNA_correlated_mRNA_count_distribution.png"),
+  p_lnc_degree,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+
+```{r}
+p_lnc_degree_log <- ggplot2::ggplot(
+  lnc_mrna_degree,
+  ggplot2::aes(x = n_correlated_mRNAs)
+) +
+  ggplot2::geom_histogram(bins = 30, fill = "#E63946", color = "white") +
+  ggplot2::scale_y_log10() +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::labs(
+    title = "Number of correlated mRNAs per lncRNA",
+    subtitle = paste0("Significant pairs: |r| ≥ ", r_threshold, ", FDR ≤ ", fdr_threshold),
+    x = "Number of correlated mRNAs",
+    y = "Number of lncRNAs (log10 scale)"
+  )
+
+p_lnc_degree_log
+
+ggplot2::ggsave(
+  file.path(out_dir, "lncRNA_correlated_mRNA_count_distribution_logY.png"),
+  p_lnc_degree_log,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+```
+

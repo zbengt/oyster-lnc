@@ -396,10 +396,10 @@ pheatmap(heatmap_data,
          angle_col = 45)
 ```
 
-## Visualization 5: Individual Scatter Plots (Raw-Scale Expression)
+## Visualization 5: Individual Scatter Plots
 
-This function generates a scatter plot of raw (untransformed) count data for any
-lncRNA–mRNA pair, showing the "close to raw" relationship.
+This function generates a scatter plot of log count data for any
+lncRNA–mRNA pair.
 
 ```{r scatter-function}
 plot_pair_log <- function(lnc_id_sel, mrna_id_sel,
@@ -528,4 +528,90 @@ cd ~/github/oyster-lnc/output/18.1-lncRNA-mRNA-pearson/scatter_plots
 convert -delay 50 -loop 0 *.png ../scatter_plots.gif
 ```
 
+### Get scatter points color coded by sex
+
+```{r}
+plot_pair_log_sex <- function(lnc_id_sel, mrna_id_sel,
+                              lnc_mat_source = lnc_log,
+                              mrna_mat_source = mrna_log,
+                              samples = common_samples) {
+
+  df <- tibble::tibble(
+    sample = samples,
+    lnc_expr  = as.numeric(lnc_mat_source[lnc_id_sel, samples]),
+    mrna_expr = as.numeric(mrna_mat_source[mrna_id_sel, samples])
+  ) %>%
+    dplyr::mutate(
+      sex = ifelse(grepl("M$", sample), "Male",
+                   ifelse(grepl("F$", sample), "Female", NA))
+    )
+
+  r_val <- cor(df$lnc_expr, df$mrna_expr,
+               method = "pearson",
+               use = "pairwise.complete.obs")
+
+  ggplot2::ggplot(df, ggplot2::aes(x = lnc_expr, y = mrna_expr, color = sex)) +
+    ggplot2::geom_point(size = 3, alpha = 0.85) +
+    ggplot2::geom_smooth(
+      method = "lm",
+      se = TRUE,
+      color = "black",
+      fill = "gray70",
+      alpha = 0.2
+    ) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sample),
+      size = 2.5,
+      nudge_y = max(df$mrna_expr, na.rm = TRUE) * 0.03,
+      color = "gray40"
+    ) +
+    ggplot2::scale_color_manual(
+      values = c("Male" = "#457B9D", "Female" = "#E63946")
+    ) +
+    ggplot2::labs(
+      title = paste0(lnc_id_sel, " vs ", mrna_id_sel),
+      subtitle = sprintf(
+        "Pearson r = %.3f  (log2-transformed counts, n = %d samples)",
+        r_val, nrow(df)
+      ),
+      x = paste("lncRNA expression:", lnc_id_sel),
+      y = paste("mRNA expression:", mrna_id_sel),
+      color = "Sex"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(plot.title = ggplot2::element_text(size = 11))
+}
+```
+
+```{r}
+scatter_dir_sex <- file.path(out_dir, "scatter_plots_by_sex")
+dir.create(scatter_dir_sex, recursive = TRUE, showWarnings = FALSE)
+```
+
+```{r}
+n_to_save <- min(nrow(sig_pairs), 100)
+cat("Saving", n_to_save, "sex-colored scatter plots...\n")
+
+for (i in seq_len(n_to_save)) {
+  row <- sig_pairs[i, ]
+  p <- plot_pair_log_sex(row$lnc_id, row$mrna_id)
+
+  fname <- paste0(
+    gsub("[^A-Za-z0-9_.-]", "_", row$lnc_id),
+    "_vs_",
+    gsub("[^A-Za-z0-9_.-]", "_", row$mrna_id),
+    "_sex.png"   # <-- helpful suffix
+  )
+
+  ggsave(file.path(scatter_dir_sex, fname),
+         p, width = 7, height = 5, dpi = 200)
+}
+
+cat("Sex-colored scatter plots saved to:", scatter_dir_sex, "\n")
+```
+
+```{bash}
+cd ~/github/oyster-lnc/output/18.1-lncRNA-mRNA-pearson/scatter_plots_by_sex 
+convert -delay 50 -loop 0 *.png ../scatter_plots_by_sex.gif
+```
 
