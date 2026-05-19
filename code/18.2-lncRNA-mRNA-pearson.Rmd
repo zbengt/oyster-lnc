@@ -1282,3 +1282,447 @@ ggplot2::ggsave(
 )
 ```
 
+
+```{r}
+## ---------------------------
+## Expression barplots for focal lncRNA hub
+## ---------------------------
+
+focal_lnc <- "rna-XR_002638603.1"
+
+lnc_barplot_dir <- file.path(out_dir, "lncRNA_hub_expression_barplots")
+dir.create(lnc_barplot_dir, recursive = TRUE, showWarnings = FALSE)
+
+## Log2 expression plot
+df_lnc_log <- tibble::tibble(
+  sample = factor(common_samples, levels = common_samples),
+  expr = as.numeric(lnc_log[focal_lnc, common_samples])
+)
+
+p_lnc_log <- ggplot2::ggplot(df_lnc_log, ggplot2::aes(x = sample, y = expr)) +
+  ggplot2::geom_col(fill = "#E63946") +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = ggplot2::element_text(size = 11)
+  ) +
+  ggplot2::labs(
+    title = focal_lnc,
+    subtitle = "lncRNA hub expression across samples",
+    x = "Sample",
+    y = "log2(count + 1) expression"
+  )
+
+ggplot2::ggsave(
+  file.path(lnc_barplot_dir, paste0(focal_lnc, "_log2_expression.png")),
+  p_lnc_log,
+  width = 7,
+  height = 4,
+  dpi = 200
+)
+
+## Raw count plot
+df_lnc_raw <- tibble::tibble(
+  sample = factor(common_samples, levels = common_samples),
+  expr = as.numeric(lnc_variable[focal_lnc, common_samples])
+)
+
+p_lnc_raw <- ggplot2::ggplot(df_lnc_raw, ggplot2::aes(x = sample, y = expr)) +
+  ggplot2::geom_col(fill = "#E63946") +
+  ggplot2::theme_minimal(base_size = 12) +
+  ggplot2::theme(
+    axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5),
+    plot.title = ggplot2::element_text(size = 11)
+  ) +
+  ggplot2::labs(
+    title = focal_lnc,
+    subtitle = "lncRNA hub raw count expression across samples",
+    x = "Sample",
+    y = "Raw count expression"
+  )
+
+ggplot2::ggsave(
+  file.path(lnc_barplot_dir, paste0(focal_lnc, "_raw_count_expression.png")),
+  p_lnc_raw,
+  width = 7,
+  height = 4,
+  dpi = 200
+)
+
+p_lnc_log
+p_lnc_raw
+```
+
+
+## Visualization 6: Cluster-Labeled Network and Cluster-Specific Scatterplots
+
+The full lncRNA–mRNA co-expression network contains multiple disconnected subnetworks. 
+Here, each disconnected subnetwork is treated as a separate network cluster using 
+`igraph::components()`. Clusters are labeled alphabetically starting with A. For each 
+cluster, this section exports a table of the lncRNA–mRNA pairs in that cluster and saves 
+sex-colored scatterplots for only those pairs into a cluster-specific folder.
+
+```{r}
+## ---------------------------------
+## Identify disconnected network clusters with visible labels
+## ---------------------------------
+
+cluster_edges <- sig_pairs %>%
+  dplyr::select(from = lnc_id, to = mrna_id, r, FDR)
+
+g_clusters <- igraph::graph_from_data_frame(cluster_edges, directed = FALSE)
+
+comp <- igraph::components(g_clusters)
+
+cluster_membership <- tibble::tibble(
+  node = names(comp$membership),
+  component_id = as.integer(comp$membership),
+  cluster_size = comp$csize[as.integer(comp$membership)]
+) %>%
+  dplyr::mutate(
+    node_type = ifelse(node %in% sig_pairs$lnc_id, "lncRNA", "mRNA")
+  )
+
+make_cluster_labels <- function(n) {
+  sapply(seq_len(n), function(i) {
+    x <- i
+    out <- character()
+
+    while (x > 0) {
+      rem <- (x - 1) %% 26
+      out <- c(LETTERS[rem + 1], out)
+      x <- (x - 1) %/% 26
+    }
+
+    paste0(out, collapse = "")
+  })
+}
+
+## Label by size: largest cluster = A
+cluster_label_key <- cluster_membership %>%
+  dplyr::distinct(component_id, cluster_size) %>%
+  dplyr::arrange(dplyr::desc(cluster_size), component_id) %>%
+  dplyr::mutate(cluster_label = make_cluster_labels(dplyr::n()))
+
+cluster_membership <- cluster_membership %>%
+  dplyr::left_join(cluster_label_key, by = c("component_id", "cluster_size"))
+
+## Make layout, then normalize it so plot() and text() use same coordinates
+set.seed(42)
+
+cluster_layout_raw <- igraph::layout_with_fr(g_clusters, niter = 3000)
+
+cluster_layout <- igraph::norm_coords(
+  cluster_layout_raw,
+  xmin = -1,
+  xmax = 1,
+  ymin = -1,
+  ymax = 1
+)
+
+layout_tbl <- tibble::tibble(
+  node = igraph::V(g_clusters)$name,
+  x = cluster_layout[, 1],
+  y = cluster_layout[, 2]
+) %>%
+  dplyr::left_join(cluster_membership, by = "node")
+
+## Place labels above each cluster, within the visible plotting area
+cluster_positions <- layout_tbl %>%
+  dplyr::group_by(component_id, cluster_label) %>%
+  dplyr::summarise(
+    xmin = min(x),
+    xmax = max(x),
+    ymin = min(y),
+    ymax = max(y),
+    label_x = mean(c(xmin, xmax)),
+    label_y = pmin(ymax + 0.08, 1.12),
+    n_nodes = dplyr::n(),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(cluster_label)
+
+## Add cluster labels to pairs
+pair_clusters <- sig_pairs %>%
+  dplyr::left_join(
+    cluster_membership %>%
+      dplyr::select(node, component_id, cluster_label) %>%
+      dplyr::rename(
+        lnc_id = node,
+        component_id_lnc = component_id
+      ),
+    by = "lnc_id"
+  ) %>%
+  dplyr::left_join(
+    cluster_membership %>%
+      dplyr::select(node, component_id) %>%
+      dplyr::rename(
+        mrna_id = node,
+        component_id_mrna = component_id
+      ),
+    by = "mrna_id"
+  )
+
+stopifnot(all(pair_clusters$component_id_lnc == pair_clusters$component_id_mrna))
+
+pair_clusters <- pair_clusters %>%
+  dplyr::mutate(component_id = component_id_lnc) %>%
+  dplyr::select(-component_id_lnc, -component_id_mrna) %>%
+  dplyr::arrange(cluster_label, dplyr::desc(abs(r)), FDR)
+
+cluster_summary <- pair_clusters %>%
+  dplyr::group_by(cluster_label, component_id) %>%
+  dplyr::summarise(
+    n_pairs = dplyr::n(),
+    n_lncRNAs = dplyr::n_distinct(lnc_id),
+    n_mRNAs = dplyr::n_distinct(mrna_id),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(cluster_label)
+
+cluster_summary
+```
+
+```{r}
+readr::write_tsv(
+  cluster_membership,
+  file.path(out_dir, "node_cluster_membership_99.tsv")
+)
+
+readr::write_tsv(
+  pair_clusters,
+  file.path(out_dir, "significant_pairs_with_cluster_labels_99.tsv")
+)
+
+readr::write_tsv(
+  cluster_summary,
+  file.path(out_dir, "cluster_summary_99.tsv")
+)
+```
+
+```{r}
+## ---------------------------------
+## Plot network with cluster labels that should actually appear
+## ---------------------------------
+
+igraph::V(g_clusters)$type <- ifelse(
+  igraph::V(g_clusters)$name %in% sig_pairs$lnc_id,
+  "lncRNA",
+  "mRNA"
+)
+
+deg <- igraph::degree(g_clusters)
+
+igraph::V(g_clusters)$color <- ifelse(
+  igraph::V(g_clusters)$type == "lncRNA",
+  "#E63946",
+  "#457B9D"
+)
+
+igraph::V(g_clusters)$frame.color <- ifelse(
+  igraph::V(g_clusters)$type == "lncRNA",
+  "#9D0208",
+  "#1D3557"
+)
+
+igraph::V(g_clusters)$size <- ifelse(
+  igraph::V(g_clusters)$type == "lncRNA",
+  scales::rescale(log1p(deg), to = c(6, 22)),
+  scales::rescale(log1p(deg), to = c(4, 14))
+)
+
+igraph::E(g_clusters)$color <- ifelse(
+  cluster_edges$r > 0,
+  adjustcolor("#E63946", alpha.f = 0.35),
+  adjustcolor("#457B9D", alpha.f = 0.35)
+)
+
+igraph::E(g_clusters)$width <- abs(cluster_edges$r) * 1.5
+
+png(
+  file.path(out_dir, "coexpression_network_99_cluster_labeled.png"),
+  width = 2600,
+  height = 2600,
+  res = 300
+)
+
+par(mar = c(2, 2, 4, 2), xpd = NA)
+
+plot(
+  g_clusters,
+  layout = cluster_layout,
+  vertex.label = NA,
+  edge.curved = 0.1,
+  main = "lncRNA–mRNA Co-expression Network with Cluster Labels",
+  rescale = FALSE,
+  xlim = c(-1.2, 1.2),
+  ylim = c(-1.2, 1.2)
+)
+
+text(
+  x = cluster_positions$label_x,
+  y = cluster_positions$label_y,
+  labels = cluster_positions$cluster_label,
+  cex = 1.6,
+  font = 2,
+  col = "black",
+  xpd = NA
+)
+
+legend(
+  "bottomleft",
+  legend = c("lncRNA", "mRNA", "Positive r", "Negative r"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  lwd = 2,
+  cex = 0.9,
+  bty = "n"
+)
+
+dev.off()
+
+## Also display in notebook
+par(mar = c(2, 2, 4, 2), xpd = NA)
+
+plot(
+  g_clusters,
+  layout = cluster_layout,
+  vertex.label = NA,
+  edge.curved = 0.1,
+  main = "lncRNA–mRNA Co-expression Network with Cluster Labels",
+  rescale = FALSE,
+  xlim = c(-1.2, 1.2),
+  ylim = c(-1.2, 1.2)
+)
+
+text(
+  x = cluster_positions$label_x,
+  y = cluster_positions$label_y,
+  labels = cluster_positions$cluster_label,
+  cex = 1.6,
+  font = 2,
+  col = "black",
+  xpd = NA
+)
+
+legend(
+  "bottomleft",
+  legend = c("lncRNA", "mRNA", "Positive r", "Negative r"),
+  col = c("#E63946", "#457B9D", "#E63946", "#457B9D"),
+  pch = c(16, 16, NA, NA),
+  lty = c(NA, NA, 1, 1),
+  lwd = 2,
+  cex = 0.9,
+  bty = "n"
+)
+```
+
+```{r}
+## ---------------------------------
+## Export cluster membership tables
+## ---------------------------------
+
+readr::write_tsv(
+  cluster_membership,
+  file.path(out_dir, "node_cluster_membership_99.tsv")
+)
+
+readr::write_tsv(
+  pair_clusters,
+  file.path(out_dir, "significant_pairs_with_cluster_labels_99.tsv")
+)
+
+readr::write_tsv(
+  cluster_summary,
+  file.path(out_dir, "cluster_summary_99.tsv")
+)
+
+cluster_summary
+```
+
+```{r}
+## ---------------------------------
+## Save sex-colored scatterplots by cluster
+## ---------------------------------
+
+cluster_base_dir <- file.path(out_dir, "cluster_scatter_plots_by_sex")
+dir.create(cluster_base_dir, recursive = TRUE, showWarnings = FALSE)
+
+safe_name <- function(x) {
+  gsub("[^A-Za-z0-9_.-]", "_", x)
+}
+
+for (cl in cluster_summary$cluster_label) {
+
+  cluster_dir <- file.path(cluster_base_dir, paste0("cluster_", cl))
+  dir.create(cluster_dir, recursive = TRUE, showWarnings = FALSE)
+
+  cluster_pairs <- pair_clusters %>%
+    dplyr::filter(cluster_label == cl) %>%
+    dplyr::arrange(dplyr::desc(abs(r)), FDR)
+
+  # Save pair table for this cluster
+  readr::write_tsv(
+    cluster_pairs,
+    file.path(cluster_dir, paste0("cluster_", cl, "_pairs.tsv"))
+  )
+
+  cat("Saving", nrow(cluster_pairs), "sex-colored scatterplots for cluster", cl, "...\n")
+
+  for (i in seq_len(nrow(cluster_pairs))) {
+
+    row <- cluster_pairs[i, ]
+
+    p <- plot_pair_log_sex(
+      lnc_id_sel = row$lnc_id,
+      mrna_id_sel = row$mrna_id
+    )
+
+    fname <- paste0(
+      "cluster_", cl,
+      "__",
+      safe_name(row$lnc_id),
+      "_vs_",
+      safe_name(row$mrna_id),
+      "_sex.png"
+    )
+
+    ggplot2::ggsave(
+      filename = file.path(cluster_dir, fname),
+      plot = p,
+      width = 7,
+      height = 5,
+      dpi = 200
+    )
+  }
+}
+
+cat("Cluster-specific sex-colored scatterplots saved to:", cluster_base_dir, "\n")
+```
+
+```{r}
+## ---------------------------------
+## Cluster summary with lncRNA and mRNA IDs
+## ---------------------------------
+
+cluster_id_summary <- pair_clusters %>%
+  dplyr::group_by(cluster_label) %>%
+  dplyr::summarise(
+    n_pairs = dplyr::n(),
+    n_lncRNAs = dplyr::n_distinct(lnc_id),
+    n_mRNAs = dplyr::n_distinct(mrna_id),
+    lncRNAs = paste(sort(unique(lnc_id)), collapse = "; "),
+    mRNAs = paste(sort(unique(mrna_id)), collapse = "; "),
+    .groups = "drop"
+  ) %>%
+  dplyr::arrange(cluster_label)
+
+cluster_id_summary
+
+readr::write_tsv(
+  cluster_id_summary,
+  file.path(out_dir, "cluster_summary_with_ids_99.tsv")
+)
+```
+
